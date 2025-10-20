@@ -12,7 +12,7 @@ Este projeto permite baixar vídeos do Telegram utilizando múltiplas hashtags. 
 
 1. Clone o repositório:
    ```
-   git clone https://github.com/seu_usuario/telegram-downloader-tools.git
+   git clone https://github.com/vinicius-dsr/Telegram-Downloader-Tools.git
    cd telegram-downloader-tools
    ```
 
