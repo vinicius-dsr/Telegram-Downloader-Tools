@@ -87,7 +87,7 @@ async def main():
                 continue
             
             try:
-                print(f"\n📥 Baixando: {filename}")
+                print(f"\n⏬ Baixando: {filename}")
                 await client.download_media(msg, file=out_path, progress_callback=progress_callback)
                 print()  # Nova linha após completar o download
                 
@@ -106,7 +106,7 @@ async def main():
                 print(f"\n⏳ Flood wait ({e.seconds}s) → aguardando...")
                 await asyncio.sleep(e.seconds + 1)
             except Exception as e:
-                print(f"\n❌ Erro ao baixar msg {msg.id}: {e}")
+                print(f"\n Erro ao baixar msg {msg.id}: {e}")
         
         print(f"✅ Tag {tag}: {count_tag} vídeos baixados.")
     
@@ -117,7 +117,7 @@ async def main():
         df.to_csv(csv_path, index=False, encoding="utf-8-sig")
         print(f"\n📄 CSV salvo em: {csv_path}")
     
-    print(f"\n🎉 Finalizado: {total_baixados} vídeos baixados ({total_encontrados} mensagens verificadas).")
+    print(f"\n🚀 Finalizado: {total_baixados} vídeos baixados ({total_encontrados} mensagens verificadas).")
 
 if __name__ == "__main__":
     asyncio.run(main())
