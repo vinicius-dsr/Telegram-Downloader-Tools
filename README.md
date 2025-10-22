@@ -44,7 +44,3 @@ python src/download_telegram_video_tags.py --api-id SEU_API_ID --api-hash SEU_AP
 ## Contribuição
 
 Sinta-se à vontade para contribuir com melhorias ou correções. Faça um fork do repositório e envie um pull request.
-
-## Licença
-
-Este projeto está licenciado sob a MIT License.
