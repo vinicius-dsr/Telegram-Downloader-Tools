@@ -35,6 +35,12 @@ Para usar a ferramenta, execute o seguinte comando:
 python src/download_telegram_video_tags.py --api-id SEU_API_ID --api-hash SEU_API_HASH --target "https://t.me/nomeCanal" --tags "#tag1,#tag2" --out "./downloads"
 ```
 
+## Canais do Telegram
+
+- https://t.me/+hy2KQlxP78JiYmIx
+- https://t.me/+PxqctwKBOjMxMjli
+
+
 ## Contribuição
 
 Sinta-se à vontade para contribuir com melhorias ou correções. Faça um fork do repositório e envie um pull request.
