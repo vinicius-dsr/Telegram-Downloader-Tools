@@ -21,9 +21,33 @@ def parse_args():
 def safe_filename(s: str) -> str:
     return "".join(c if c.isalnum() or c in "._- " else "_" for c in s).strip()
 
+import time
+
+# Variável global para armazenar o tempo do último progresso
+last_progress_time = time.time()
+last_progress_bytes = 0
+
 def progress_callback(current, total):
     """Callback para mostrar progresso do download"""
+    global last_progress_time, last_progress_bytes
+    
     if total > 0:
+        # Calcular velocidade
+        current_time = time.time()
+        time_diff = current_time - last_progress_time
+        bytes_diff = current - last_progress_bytes
+        
+        if time_diff > 0:  # Evitar divisão por zero
+            speed = bytes_diff / time_diff  # bytes por segundo
+            speed_mb = speed / (1024 * 1024)  # converter para MB/s
+        else:
+            speed_mb = 0
+            
+        # Atualizar valores para próximo cálculo
+        last_progress_time = current_time
+        last_progress_bytes = current
+        
+        # Calcular porcentagem e barra de progresso
         percent = (current / total) * 100
         bar_length = 40
         filled = int(bar_length * current / total)
@@ -33,7 +57,18 @@ def progress_callback(current, total):
         current_mb = current / (1024 * 1024)
         total_mb = total / (1024 * 1024)
         
-        print(f'\r⬇️  [{bar}] {percent:.1f}% ({current_mb:.1f}/{total_mb:.1f} MB)', end='', flush=True)
+        # Calcular tempo estimado restante (ETA)
+        if speed > 0:
+            bytes_remaining = total - current
+            eta_seconds = bytes_remaining / speed
+            eta_min = int(eta_seconds // 60)
+            eta_sec = int(eta_seconds % 60)
+            eta_str = f"ETA: {eta_min}m{eta_sec}s"
+        else:
+            eta_str = "ETA: --"
+        
+        print(f'\r⬇️  [{bar}] {percent:.1f}% ({current_mb:.1f}/{total_mb:.1f} MB) - {speed_mb:.1f} MB/s - {eta_str}', 
+            end='', flush=True)
 
 async def main():
     args = parse_args()
@@ -88,6 +123,11 @@ async def main():
             
             try:
                 print(f"\n⏬ Baixando: {filename}")
+                # Resetar variáveis globais antes de cada download
+                global last_progress_time, last_progress_bytes
+                last_progress_time = time.time()
+                last_progress_bytes = 0
+                
                 await client.download_media(msg, file=out_path, progress_callback=progress_callback)
                 print()  # Nova linha após completar o download
                 
