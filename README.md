@@ -61,6 +61,20 @@ Ou no Windows, execute: `install_gui.bat`
 
 ### Como Usar a GUI CustomTkinter
 
+#### Configuração de Nomes de Arquivo
+- **Linha do Nome do Vídeo**: Selecione qual linha da mensagem será usada como nome do arquivo baixado:
+  - `Primeira Linha`: Usa a primeira linha da mensagem
+  - `Segunda Linha`: Usa a segunda linha (ou a primeira se não houver segunda)
+  - `Terceira Linha`: Usa a terceira linha (ou a última disponível)
+  - `Última Linha`: Usa a última linha da mensagem (comportamento padrão)
+
+#### Dicas para Tags
+- As tags podem ser inseridas de várias formas, o sistema irá formatar automaticamente:
+  - `tag1 tag2 tag3` → `tag1, tag2, tag3`
+  - `tag1,tag2,tag3` → `tag1, tag2, tag3`
+  - `tag1, tag2, tag3` → mantém a formatação
+  - Mistura de espaços e vírgulas também é aceito
+
 1. Execute o arquivo `src/download_telegram_video_tags_gui.py`:
 ```bash
 python src/download_telegram_video_tags_gui.py
@@ -88,6 +102,9 @@ python src/download_telegram_video_tags_gui.py
 - **Progresso em Tempo Real**: Porcentagem, velocidade (MB/s) e tempo estimado (ETA)
 - **Log Detalhado**: Status de conexão, vídeos encontrados, erros e avisos
 - **Botão Parar**: Cancela o download em andamento a qualquer momento
+- **📌 Nomes de Arquivo Dinâmicos**: Escolha qual linha da mensagem será usada como nome do arquivo (primeira, segunda, terceira ou última linha)
+- **🏷️ Processamento Inteligente de Tags**: Aceita tags separadas por vírgulas, espaços ou ambos, com formatação automática
+- **💾 Configurações Salvas**: As preferências de linha para nomes de arquivo são salvas com as configurações
 
 ---
 
