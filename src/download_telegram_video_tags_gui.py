@@ -125,15 +125,33 @@ class TelegramDownloaderGUI:
         self.session_entry.insert(0, "session")
         self.session_entry.grid(row=6, column=1, padx=10, pady=5, sticky="ew")
 
+        # Linha para nome do vídeo
+        ctk.CTkLabel(
+            input_frame, text="Linha do nome do vídeo:", font=ctk.CTkFont(weight="bold")
+        ).grid(row=7, column=0, sticky="w", padx=10, pady=5)
+        self.name_line_var = ctk.StringVar(value="última")
+        name_line_frame = ctk.CTkFrame(input_frame, fg_color="transparent")
+        name_line_frame.grid(row=7, column=1, padx=10, pady=5, sticky="ew")
+        
+        options = ["primeira", "segunda", "terceira", "última"]
+        for i, option in enumerate(options):
+            rb = ctk.CTkRadioButton(
+                name_line_frame,
+                text=option,
+                variable=self.name_line_var,
+                value=option
+            )
+            rb.pack(side="left", padx=5)
+        
         # Max flood wait
         ctk.CTkLabel(
             input_frame, text="Max Flood Wait (s):", font=ctk.CTkFont(weight="bold")
-        ).grid(row=7, column=0, sticky="w", padx=10, pady=5)
+        ).grid(row=8, column=0, sticky="w", padx=10, pady=5)
         self.max_flood_entry = ctk.CTkEntry(
             input_frame, width=300, placeholder_text="300"
         )
         self.max_flood_entry.insert(0, "300")
-        self.max_flood_entry.grid(row=7, column=1, padx=10, pady=5, sticky="ew")
+        self.max_flood_entry.grid(row=8, column=1, padx=10, pady=5, sticky="ew")
 
         input_frame.columnconfigure(1, weight=1)
 
@@ -356,9 +374,22 @@ class TelegramDownloaderGUI:
             self.log("❌ Erro: Diretório de saída não encontrado!")
             return False
             
-        if not self.tags_entry.get().strip():
+        # Processa as tags para garantir que estejam separadas por vírgulas
+        tags_text = self.tags_entry.get().strip()
+        if not tags_text:
             self.log("❌ Erro: Tags são obrigatórias!")
             return False
+            
+        # Remove espaços em branco extras e adiciona vírgulas se necessário
+        tags_list = [tag.strip() for tag in tags_text.replace(' ', ',').replace(',,', ',').split(',') if tag.strip()]
+        if not tags_list:
+            self.log("❌ Erro: Nenhuma tag válida encontrada!")
+            return False
+            
+        # Atualiza o campo com as tags formatadas corretamente
+        formatted_tags = ', '.join(tags_list)
+        self.tags_entry.delete(0, 'end')
+        self.tags_entry.insert(0, formatted_tags)
             
         try:
             int(self.api_id_entry.get().strip())
@@ -508,11 +539,23 @@ class TelegramDownloaderGUI:
                         if not is_video and not mime.startswith("video"):
                             continue
 
-                        # Extrair nome do vídeo
+                        # Extrair nome do vídeo conforme a opção selecionada
                         lines = [
                             l.strip() for l in msg.message.split("\n") if l.strip()
                         ]
-                        video_name = lines[-1] if lines else f"msg{msg.id}"
+                        
+                        if not lines:
+                            video_name = f"msg{msg.id}"
+                        else:
+                            line_choice = self.name_line_var.get()
+                            if line_choice == "primeira":
+                                video_name = lines[0]
+                            elif line_choice == "segunda":
+                                video_name = lines[1] if len(lines) > 1 else lines[0]
+                            elif line_choice == "terceira":
+                                video_name = lines[2] if len(lines) > 2 else lines[-1]
+                            else:  # última
+                                video_name = lines[-1]
 
                         while video_name.startswith("="):
                             video_name = video_name[1:].strip()
@@ -615,6 +658,7 @@ class TelegramDownloaderGUI:
             "limit": self.limit_entry.get().strip(),
             "session": self.session_entry.get().strip(),
             "max_flood_wait": self.max_flood_entry.get().strip(),
+            "name_line": self.name_line_var.get(),
         }
 
         # Abrir diálogo para salvar arquivo
@@ -670,9 +714,11 @@ class TelegramDownloaderGUI:
                 if "limit" in config:
                     self.limit_entry.insert(0, config["limit"])
                 if "session" in config:
-                    self.session_entry.insert(0, config["session"])
+                    self.session_entry.insert(0, config.get("session_name", "session"))
                 if "max_flood_wait" in config:
-                    self.max_flood_entry.insert(0, config["max_flood_wait"])
+                    self.max_flood_entry.insert(0, config.get("max_flood_wait", "300"))
+                if "name_line" in config:
+                    self.name_line_var.set(config.get("name_line", "última"))
 
                 messagebox.showinfo(
                     "Sucesso", f"Configuração carregada de:\n{file_path}"
