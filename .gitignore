@@ -29,6 +29,9 @@ session.session
 *.session
 telegram_downloader_config.json
 
+# Config files
+*.json
+
 # Environment variables
 .env
 .env.local
