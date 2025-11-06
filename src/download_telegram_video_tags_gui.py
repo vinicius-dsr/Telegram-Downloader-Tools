@@ -1,1026 +1,802 @@
 #!/usr/bin/env python3
-
-import asyncio
 import os
 import json
-import threading
 import time
+import asyncio
+import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, Dict, List
 
 import pandas as pd
 import customtkinter as ctk
-from tkinter import filedialog, messagebox
-from telethon import TelegramClient
-from telethon.errors import FloodWaitError
+from tkinter import messagebox, filedialog
 
-# Configuração do CustomTkinter
+from telethon import TelegramClient
+from telethon.errors import FloodWaitError, SessionPasswordNeededError
+
+# --- Paths: garantir que config/session fiquem em src/ (diretório do script) ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # deve ser src/
+CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
+
+# --- CTk appearance ---
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 
+# ---------------- Utilities ----------------
 def safe_filename(s: str, max_length: int = 200) -> str:
-    """Converte string em nome de arquivo seguro"""
-    # Normalizar espaços e caracteres inválidos
+    if not s:
+        return "untitled"
     clean = "".join(c if c.isalnum() or c in "._- " else "_" for c in s).strip()
-    # Substituir múltiplos espaços por um
     while "  " in clean:
         clean = clean.replace("  ", " ")
-    # Limita o tamanho do nome
-    if len(clean) > max_length:
-        return clean[:max_length].rstrip()
-    return clean or "untitled"
+    return clean[:max_length].rstrip() if len(clean) > max_length else clean
 
 
-class DownloadConfig:
-    """Classe para armazenar configurações de download"""
+def load_config() -> Optional[Dict]:
+    try:
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Warning: não foi possível ler config.json: {e}")
+    return None
 
+
+def save_config(cfg: Dict):
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f"Erro ao salvar config.json: {e}")
+
+
+def delete_config_and_session(session_name: str = "session"):
+    try:
+        if os.path.exists(CONFIG_PATH):
+            os.remove(CONFIG_PATH)
+    except Exception:
+        pass
+    try:
+        session_file = os.path.join(BASE_DIR, f"{session_name}.session")
+        if os.path.exists(session_file):
+            os.remove(session_file)
+    except Exception:
+        pass
+
+
+# ---------------- GUI App ----------------
+class TelegramDownloaderGUI(ctk.CTk):
     def __init__(self):
-        self.api_id: str = ""
-        self.api_hash: str = ""
-        self.target: str = ""
-        self.tags: str = ""
-        self.output_path: str = "./downloads"
-        self.limit: str = "0"
-        self.session: str = "session"
-        self.max_flood_wait: str = "300"
-        self.name_line: str = "última"
-        self.use_emojis: bool = True
+        super().__init__()
+        self.title("Telegram Video Downloader")
+        self.geometry("900x800")
+        self.minsize(800, 600)
 
-    def to_dict(self) -> Dict:
-        """Converte configuração para dicionário"""
-        return {
-            "api_id": self.api_id,
-            "api_hash": self.api_hash,
-            "target": self.target,
-            "tags": self.tags,
-            "output_path": self.output_path,
-            "limit": self.limit,
-            "session": self.session,
-            "max_flood_wait": self.max_flood_wait,
-            "name_line": self.name_line,
-            "use_emojis": self.use_emojis,
-        }
+        # state & stats
+        self.config = load_config() or {}
+        self.client: Optional[TelegramClient] = None
 
-    def from_dict(self, data: Dict):
-        """Carrega configuração de dicionário"""
-        self.api_id = data.get("api_id", "")
-        self.api_hash = data.get("api_hash", "")
-        self.target = data.get("target", "")
-        self.tags = data.get("tags", "")
-        self.output_path = data.get("output_path", "./downloads")
-        self.limit = data.get("limit", "0")
-        self.session = data.get("session", "session")
-        self.max_flood_wait = data.get("max_flood_wait", "300")
-        self.name_line = data.get("name_line", "última")
-        self.use_emojis = data.get("use_emojis", True)
-
-
-class TelegramDownloaderGUI:
-    """Interface gráfica para download de vídeos do Telegram"""
-
-    def __init__(self):
-        self.root = ctk.CTk()
-        self.root.title("Telegram Video Downloader")
-        self.root.geometry("900x800")
-
-        # Estado do aplicativo
         self.downloading = False
         self.last_progress_time = time.time()
         self.last_progress_bytes = 0
 
-        # Configuração
-        self.config = DownloadConfig()
+        # Build initial UI depending on config/session
+        if self.config and self._session_exists(self.config.get("session_name", "session")):
+            # show main UI directly
+            self._build_main_interface()
+        else:
+            # show login UI
+            self._build_login_interface()
 
-        # Criar interface
-        self._create_widgets()
+    # ---------- Login UI & Flow ----------
+    def _build_login_interface(self):
+        self._clear()
+        frame = ctk.CTkFrame(self)
+        frame.pack(fill="both", expand=True, padx=18, pady=18)
 
-    def _create_widgets(self):
-        """Cria todos os widgets da interface"""
-        # Frame principal com scroll
-        main_frame = ctk.CTkScrollableFrame(self.root)
-        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # Título
-        self._create_title(main_frame)
-
-        # Formulário de entrada
-        self._create_input_form(main_frame)
-
-        # Botões de configuração
-        self._create_config_buttons(main_frame)
-
-        # Botões de controle
-        self._create_control_buttons(main_frame)
-
-        # Barra de progresso
-        self._create_progress_section(main_frame)
-
-        # Área de log
-        self._create_log_section(main_frame)
-
-    def _create_title(self, parent):
-        """Cria o título da aplicação"""
-        title_label = ctk.CTkLabel(
-            parent,
-            text="Telegram Video Downloader",
-            font=ctk.CTkFont(size=24, weight="bold"),
-        )
-        title_label.pack(pady=(10, 20))
-
-    def _create_input_form(self, parent):
-        """Cria o formulário de entrada de dados"""
-        input_frame = ctk.CTkFrame(parent)
-        input_frame.pack(fill="x", padx=10, pady=5)
-
-        # Configurar grid
-        input_frame.columnconfigure(1, weight=1)
+        ctk.CTkLabel(frame, text="Configurar conta Telegram", font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(4, 12))
 
         # API ID
-        self._create_form_field(
-            input_frame, 0, "API ID:", "api_id_entry", placeholder="Digite seu API ID"
-        )
+        ctk.CTkLabel(frame, text="API ID:").pack(anchor="w")
+        self.login_api_id = ctk.CTkEntry(frame)
+        self.login_api_id.pack(fill="x", pady=(0, 8))
+        if self.config.get("api_id"):
+            self.login_api_id.insert(0, str(self.config.get("api_id")))
 
         # API Hash
-        self._create_form_field(
-            input_frame,
-            1,
-            "API Hash:",
-            "api_hash_entry",
-            placeholder="Digite seu API Hash",
-            show="*",
-        )
+        ctk.CTkLabel(frame, text="API Hash:").pack(anchor="w")
+        self.login_api_hash = ctk.CTkEntry(frame, show="*")
+        self.login_api_hash.pack(fill="x", pady=(0, 8))
+        if self.config.get("api_hash"):
+            self.login_api_hash.insert(0, self.config.get("api_hash"))
 
-        # Canal/Grupo
-        self._create_form_field(
-            input_frame,
-            2,
-            "Canal/Grupo:",
-            "target_entry",
-            placeholder="@nome ou https://t.me/nome",
-        )
+        # Phone
+        ctk.CTkLabel(frame, text="Telefone (ex: +55XXXXXXXXXXX):").pack(anchor="w")
+        self.login_phone = ctk.CTkEntry(frame)
+        self.login_phone.pack(fill="x", pady=(0, 8))
+        if self.config.get("phone"):
+            self.login_phone.insert(0, self.config.get("phone"))
+
+        # status
+        self.login_status = ctk.CTkLabel(frame, text="")
+        self.login_status.pack(pady=(4, 8))
+
+        # buttons
+        btn_frame = ctk.CTkFrame(frame)
+        btn_frame.pack(fill="x", pady=6)
+        ctk.CTkButton(btn_frame, text="Conectar e enviar código", command=self._start_login_thread).pack(side="left", expand=True, padx=6)
+        ctk.CTkButton(btn_frame, text="Sair", fg_color="red", hover_color="#a30000", command=self.destroy).pack(side="left", padx=6)
+
+    def _start_login_thread(self):
+        # read fields
+        api_id = self.login_api_id.get().strip()
+        api_hash = self.login_api_hash.get().strip()
+        phone = self.login_phone.get().strip()
+
+        if not api_id or not api_hash or not phone:
+            messagebox.showwarning("Aviso", "Preencha todos os campos (API ID, API Hash e telefone).")
+            return
+        try:
+            int(api_id)
+        except ValueError:
+            messagebox.showerror("Erro", "API ID deve ser um número.")
+            return
+
+        self.login_status.configure(text="Conectando...", text_color="gray")
+        # run async login flow in background thread
+        threading.Thread(target=lambda: asyncio.run(self._login_flow(api_id, api_hash, phone)), daemon=True).start()
+
+    async def _login_flow(self, api_id: str, api_hash: str, phone: str):
+        session_name = self.config.get("session_name", "session")
+        client = TelegramClient(os.path.join(BASE_DIR, session_name), int(api_id), api_hash)
+        try:
+            await client.connect()
+        except Exception as e:
+            self.after(0, lambda err=e: self.login_status.configure(text=f"Erro ao conectar: {err}", text_color="red"))
+            return
+
+        try:
+            if not await client.is_user_authorized():
+                # send code
+                try:
+                    await client.send_code_request(phone)
+                except Exception as e:
+                    await client.disconnect()
+                    self.after(0, lambda err=e: self.login_status.configure(text=f"Erro ao enviar código: {err}", text_color="red"))
+                    return
+
+                code = await self._ask_modal_input_async("Código de verificação", "Digite o código enviado ao Telegram:")
+                if code is None:
+                    await client.disconnect()
+                    self.after(0, lambda: self.login_status.configure(text="Login cancelado.", text_color="red"))
+                    return
+
+                try:
+                    await client.sign_in(phone, code)
+                except SessionPasswordNeededError:
+                    # ask for 2FA password
+                    pwd = await self._ask_modal_input_async("Senha 2FA", "Digite sua senha (2FA):", hide=True)
+                    if pwd is None:
+                        await client.disconnect()
+                        self.after(0, lambda: self.login_status.configure(text="2FA cancelada.", text_color="red"))
+                        return
+                    try:
+                        await client.sign_in(password=pwd)
+                    except Exception as e:
+                        await client.disconnect()
+                        self.after(0, lambda err=e: self.login_status.configure(text=f"Erro 2FA: {err}", text_color="red"))
+                        return
+                except Exception as e:
+                    await client.disconnect()
+                    self.after(0, lambda err=e: self.login_status.configure(text=f"Erro ao autenticar: {err}", text_color="red"))
+                    return
+
+            # success: save config in src/
+            cfg = {
+                "api_id": int(api_id),
+                "api_hash": api_hash,
+                "phone": phone,
+                "session_name": session_name,
+                # defaults for UI fields (can be overridden later)
+                "target": "",
+                "tags": "",
+                "output_path": "./downloads",
+                "limit": "0",
+                "max_flood_wait": "300",
+                "name_line": "última",
+            }
+            save_config(cfg)
+            self.config = cfg
+            await client.disconnect()
+            # switch to main UI on main thread
+            self.after(0, self._build_main_interface)
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+
+    async def _ask_modal_input_async(self, title: str, prompt: str, hide: bool = False) -> Optional[str]:
+        """
+        Show a simple modal CTk dialog to get input from user and return it.
+        Works by scheduling the dialog in the main thread and awaiting a future.
+        """
+        loop = asyncio.get_event_loop()
+        fut = loop.create_future()
+
+        def show_dialog():
+            dlg = ctk.CTkToplevel(self)
+            dlg.title(title)
+            dlg.geometry("360x140")
+            dlg.transient(self)
+            dlg.grab_set()
+
+            ctk.CTkLabel(dlg, text=prompt).pack(padx=12, pady=(12, 6))
+            entry = ctk.CTkEntry(dlg, show="*" if hide else "")
+            entry.pack(padx=12, pady=(0, 12), fill="x")
+
+            def _ok():
+                val = entry.get().strip()
+                dlg.grab_release()
+                dlg.destroy()
+                if not fut.done():
+                    fut.set_result(val)
+
+            def _cancel():
+                dlg.grab_release()
+                dlg.destroy()
+                if not fut.done():
+                    fut.set_result(None)
+
+            btns = ctk.CTkFrame(dlg)
+            btns.pack(pady=(0, 12))
+            ctk.CTkButton(btns, text="OK", width=100, command=_ok).pack(side="left", padx=8)
+            ctk.CTkButton(btns, text="Cancelar", width=100, command=_cancel).pack(side="left", padx=8)
+
+        self.after(0, show_dialog)
+        try:
+            return await fut
+        except Exception:
+            return None
+
+    def _session_exists(self, session_name: str) -> bool:
+        path = os.path.join(BASE_DIR, f"{session_name}.session")
+        return os.path.exists(path)
+
+    # ---------- Main Interface ----------
+    def _build_main_interface(self):
+        self._clear()
+        # reload config in case changed
+        self.config = load_config() or self.config or {}
+
+        main_frame = ctk.CTkScrollableFrame(self)
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        ctk.CTkLabel(main_frame, text="Telegram Video Downloader", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(8, 12))
+
+        input_frame = ctk.CTkFrame(main_frame)
+        input_frame.pack(fill="x", padx=8, pady=6)
+        input_frame.columnconfigure(1, weight=1)
+
+        # Target
+        ctk.CTkLabel(input_frame, text="Canal/Grupo:", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", padx=6, pady=5)
+        self.target_entry = ctk.CTkEntry(input_frame, width=400, placeholder_text="@nome ou https://t.me/nome")
+        self.target_entry.grid(row=0, column=1, padx=6, pady=5, sticky="ew")
+        if self.config.get("target"):
+            self.target_entry.insert(0, self.config.get("target"))
 
         # Tags
-        self._create_form_field(
-            input_frame, 3, "Tags:", "tags_entry", placeholder="#tag1,#tag2,#tag3"
-        )
+        ctk.CTkLabel(input_frame, text="Tags:", font=ctk.CTkFont(weight="bold")).grid(row=1, column=0, sticky="w", padx=6, pady=5)
+        self.tags_entry = ctk.CTkEntry(input_frame, width=400, placeholder_text="#tag1,#tag2")
+        self.tags_entry.grid(row=1, column=1, padx=6, pady=5, sticky="ew")
+        if self.config.get("tags"):
+            self.tags_entry.insert(0, self.config.get("tags"))
 
-        # Pasta de saída com botão
-        self._create_output_field(input_frame, 4)
+        # Output path with browse
+        ctk.CTkLabel(input_frame, text="Pasta de saída:", font=ctk.CTkFont(weight="bold")).grid(row=2, column=0, sticky="w", padx=6, pady=5)
+        output_frame = ctk.CTkFrame(input_frame, fg_color="transparent")
+        output_frame.grid(row=2, column=1, sticky="ew", padx=6, pady=5)
+        output_frame.columnconfigure(0, weight=1)
+        self.output_entry = ctk.CTkEntry(output_frame, placeholder_text="./downloads")
+        self.output_entry.insert(0, self.config.get("output_path", "./downloads"))
+        self.output_entry.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ctk.CTkButton(output_frame, text="Procurar", width=100, command=self._browse_output).grid(row=0, column=1)
 
-        # Limite
-        self._create_form_field(
-            input_frame,
-            5,
-            "Limite por tag:",
-            "limit_entry",
-            placeholder="0 = sem limite",
-            default="0",
-        )
+        # Limit
+        ctk.CTkLabel(input_frame, text="Limite por tag:", font=ctk.CTkFont(weight="bold")).grid(row=3, column=0, sticky="w", padx=6, pady=5)
+        self.limit_entry = ctk.CTkEntry(input_frame, width=120)
+        self.limit_entry.grid(row=3, column=1, sticky="w", padx=6, pady=5)
+        self.limit_entry.insert(0, str(self.config.get("limit", "0")))
 
-        # Nome da sessão
-        self._create_form_field(
-            input_frame,
-            6,
-            "Nome da sessão:",
-            "session_entry",
-            placeholder="session",
-            default="session",
-        )
+        # Session name
+        ctk.CTkLabel(input_frame, text="Nome da sessão:", font=ctk.CTkFont(weight="bold")).grid(row=4, column=0, sticky="w", padx=6, pady=5)
+        self.session_entry = ctk.CTkEntry(input_frame, width=160)
+        self.session_entry.grid(row=4, column=1, sticky="w", padx=6, pady=5)
+        self.session_entry.insert(0, self.config.get("session_name", self.config.get("session", "session")))
 
-        # Radio buttons para linha do nome
-        self._create_name_line_field(input_frame, 7)
+        # Name line
+        ctk.CTkLabel(input_frame, text="Linha do nome do vídeo:", font=ctk.CTkFont(weight="bold")).grid(row=5, column=0, sticky="w", padx=6, pady=5)
+        self.name_line_var = ctk.StringVar(value=self.config.get("name_line", "última"))
+        name_line_frame = ctk.CTkFrame(input_frame, fg_color="transparent")
+        name_line_frame.grid(row=5, column=1, sticky="w", padx=6, pady=5)
+        for opt in ["primeira", "segunda", "terceira", "última"]:
+            rb = ctk.CTkRadioButton(name_line_frame, text=opt.capitalize(), variable=self.name_line_var, value=opt)
+            rb.pack(side="left", padx=4)
 
         # Max flood wait
-        self._create_form_field(
-            input_frame,
-            8,
-            "Max Flood Wait (s):",
-            "max_flood_entry",
-            placeholder="300",
-            default="300",
-        )
+        ctk.CTkLabel(input_frame, text="Max Flood Wait (s):", font=ctk.CTkFont(weight="bold")).grid(row=6, column=0, sticky="w", padx=6, pady=5)
+        self.max_flood_entry = ctk.CTkEntry(input_frame, width=120)
+        self.max_flood_entry.grid(row=6, column=1, sticky="w", padx=6, pady=5)
+        self.max_flood_entry.insert(0, str(self.config.get("max_flood_wait", "300")))
 
-        # Opção usar emojis - fallback para ambientes que não mostram emoji
-        ctk.CTkLabel(
-            input_frame, text="Preferências:", font=ctk.CTkFont(weight="bold")
-        ).grid(row=9, column=0, sticky="w", padx=10, pady=5)
-        self.use_emojis_var = ctk.BooleanVar(value=True)
-        self.emojis_check = ctk.CTkCheckBox(
-            input_frame, text="Usar emojis (se suportado)", variable=self.use_emojis_var
-        )
-        self.emojis_check.grid(row=9, column=1, sticky="w", padx=10, pady=5)
+        # Save / Load config buttons (affect config.json in src/)
+        cfg_btn_frame = ctk.CTkFrame(main_frame)
+        cfg_btn_frame.pack(fill="x", padx=8, pady=8)
+        ctk.CTkButton(cfg_btn_frame, text="💾 Salvar Configuração", command=self._save_ui_config, fg_color="green").pack(side="left", padx=6, fill="x", expand=True)
+        ctk.CTkButton(cfg_btn_frame, text="📂 Carregar Configuração", command=self._load_config_file, fg_color="orange").pack(side="left", padx=6, fill="x", expand=True)
 
-    def _create_form_field(
-        self,
-        parent,
-        row: int,
-        label: str,
-        attr_name: str,
-        placeholder: str = "",
-        default: str = "",
-        show: str = "",
-    ):
-        """Cria um campo de formulário padrão"""
-        ctk.CTkLabel(parent, text=label, font=ctk.CTkFont(weight="bold")).grid(
-            row=row, column=0, sticky="w", padx=10, pady=5
-        )
+        # Download control
+        btn_frame = ctk.CTkFrame(main_frame)
+        btn_frame.pack(fill="x", padx=8, pady=6)
+        self.download_btn = ctk.CTkButton(btn_frame, text="▶ Iniciar Download", command=self._start_download, height=40, font=ctk.CTkFont(size=14, weight="bold"))
+        self.download_btn.pack(side="left", padx=6, fill="x", expand=True)
+        self.stop_btn = ctk.CTkButton(btn_frame, text="⏹ Parar", command=self._stop_download, height=40, fg_color="red", hover_color="darkred", state="disabled")
+        self.stop_btn.pack(side="left", padx=6, fill="x", expand=True)
 
-        entry = ctk.CTkEntry(parent, width=300, placeholder_text=placeholder, show=show)
-        if default:
-            entry.insert(0, default)
-        entry.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
-
-        setattr(self, attr_name, entry)
-
-    def _create_output_field(self, parent, row: int):
-        """Cria o campo de pasta de saída com botão de procurar"""
-        ctk.CTkLabel(
-            parent, text="Pasta de saída:", font=ctk.CTkFont(weight="bold")
-        ).grid(row=row, column=0, sticky="w", padx=10, pady=5)
-
-        output_frame = ctk.CTkFrame(parent, fg_color="transparent")
-        output_frame.grid(row=row, column=1, sticky="ew", padx=10, pady=5)
-        output_frame.columnconfigure(0, weight=1)
-
-        self.output_entry = ctk.CTkEntry(output_frame, placeholder_text="./downloads")
-        self.output_entry.insert(0, "./downloads")
-        self.output_entry.grid(row=0, column=0, sticky="ew", padx=(0, 5))
-
-        browse_btn = ctk.CTkButton(
-            output_frame, text="Procurar", width=100, command=self._browse_folder
-        )
-        browse_btn.grid(row=0, column=1)
-
-    def _create_name_line_field(self, parent, row: int):
-        """Cria o campo de seleção da linha do nome do vídeo"""
-        ctk.CTkLabel(
-            parent, text="Linha do nome do vídeo:", font=ctk.CTkFont(weight="bold")
-        ).grid(row=row, column=0, sticky="w", padx=10, pady=5)
-
-        self.name_line_var = ctk.StringVar(value="última")
-        name_line_frame = ctk.CTkFrame(parent, fg_color="transparent")
-        name_line_frame.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
-
-        options = ["primeira", "segunda", "terceira", "última"]
-        for option in options:
-            rb = ctk.CTkRadioButton(
-                name_line_frame,
-                text=option.capitalize(),
-                variable=self.name_line_var,
-                value=option,
-            )
-            rb.pack(side="left", padx=5)
-
-    def _create_config_buttons(self, parent):
-        """Cria os botões de salvar/carregar configuração"""
-        config_btn_frame = ctk.CTkFrame(parent)
-        config_btn_frame.pack(fill="x", padx=10, pady=5)
-
-        save_btn = ctk.CTkButton(
-            config_btn_frame,
-            text=self._label_with_emoji("Salvar Configuração", "💾"),
-            font=ctk.CTkFont(size=14, weight="bold"),
-            height=35,
-            command=self._save_config,
-            fg_color="green",
-            hover_color="darkgreen",
-        )
-        save_btn.pack(side="left", padx=5, fill="x", expand=True)
-
-        load_btn = ctk.CTkButton(
-            config_btn_frame,
-            text=self._label_with_emoji("Carregar Configuração", "📂"),
-            font=ctk.CTkFont(size=14, weight="bold"),
-            height=35,
-            command=self._load_config,
-            fg_color="orange",
-            hover_color="darkorange",
-        )
-        load_btn.pack(side="left", padx=5, fill="x", expand=True)
-
-    def _create_control_buttons(self, parent):
-        """Cria os botões de controle de download"""
-        btn_frame = ctk.CTkFrame(parent)
-        btn_frame.pack(fill="x", padx=10, pady=10)
-
-        self.download_btn = ctk.CTkButton(
-            btn_frame,
-            text=self._label_with_emoji("Iniciar Download", "▶"),
-            font=ctk.CTkFont(size=16, weight="bold"),
-            height=40,
-            command=self._start_download,
-        )
-        self.download_btn.pack(side="left", padx=5, fill="x", expand=True)
-
-        self.stop_btn = ctk.CTkButton(
-            btn_frame,
-            text=self._label_with_emoji("Parar", "⏹"),
-            font=ctk.CTkFont(size=16, weight="bold"),
-            height=40,
-            fg_color="red",
-            hover_color="darkred",
-            command=self._stop_download,
-            state="disabled",
-        )
-        self.stop_btn.pack(side="left", padx=5, fill="x", expand=True)
-
-    def _label_with_emoji(self, text: str, emoji: str) -> str:
-        """Retorna label com emoji dependendo da preferência do usuário."""
-        try:
-            if getattr(self, "use_emojis_var", None) and self.use_emojis_var.get():
-                return f"{emoji} {text}"
-        except Exception:
-            pass
-        return text
-
-    def _create_progress_section(self, parent):
-        """Cria a seção de progresso"""
-        progress_frame = ctk.CTkFrame(parent)
-        progress_frame.pack(fill="x", padx=10, pady=5)
-
-        ctk.CTkLabel(
-            progress_frame, text="Progresso:", font=ctk.CTkFont(weight="bold")
-        ).pack(anchor="w", padx=10, pady=(5, 0))
-
-        self.current_file_label = ctk.CTkLabel(
-            progress_frame,
-            text="Nenhum arquivo em andamento",
-            font=ctk.CTkFont(size=11, slant="italic"),
-            anchor="w",
-        )
-        self.current_file_label.pack(fill="x", padx=10, pady=(0, 5))
-
-        self.progress_bar = ctk.CTkProgressBar(progress_frame)
-        self.progress_bar.pack(fill="x", padx=10, pady=5)
+        # Progress section
+        prog_frame = ctk.CTkFrame(main_frame)
+        prog_frame.pack(fill="x", padx=8, pady=6)
+        ctk.CTkLabel(prog_frame, text="Progresso:", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=6)
+        self.current_file_label = ctk.CTkLabel(prog_frame, text="Nenhum arquivo em andamento", font=ctk.CTkFont(size=11, slant="italic"))
+        self.current_file_label.pack(fill="x", padx=6, pady=(0, 4))
+        self.progress_bar = ctk.CTkProgressBar(prog_frame)
+        self.progress_bar.pack(fill="x", padx=6, pady=4)
         self.progress_bar.set(0)
+        self.progress_label = ctk.CTkLabel(prog_frame, text="Aguardando...", font=ctk.CTkFont(size=12))
+        self.progress_label.pack(anchor="w", padx=6, pady=(0, 6))
 
-        self.progress_label = ctk.CTkLabel(
-            progress_frame, text="Aguardando...", font=ctk.CTkFont(size=12)
-        )
-        self.progress_label.pack(anchor="w", padx=10, pady=(0, 5))
-
-    def _create_log_section(self, parent):
-        """Cria a seção de log colapsável"""
-        log_frame = ctk.CTkFrame(parent)
-        log_frame.pack(fill="both", expand=True, padx=10, pady=5)
-
-        # Cabeçalho
+        # Log area (collapsible)
+        log_frame = ctk.CTkFrame(main_frame)
+        log_frame.pack(fill="both", expand=True, padx=8, pady=6)
         log_header = ctk.CTkFrame(log_frame, fg_color="transparent")
-        log_header.pack(fill="x", padx=5, pady=0)
-
+        log_header.pack(fill="x", padx=6)
         self.log_visible = ctk.BooleanVar(value=False)
-        self.toggle_log_btn = ctk.CTkButton(
-            log_header,
-            text="📋 Mostrar Log ▼",
-            command=self._toggle_log_visibility,
-            width=150,
-            height=28,
-            font=ctk.CTkFont(weight="bold", size=12),
-            fg_color="transparent",
-            hover_color=("gray80", "gray30"),
-            border_width=1,
-        )
-        self.toggle_log_btn.pack(side="left", padx=5, pady=2)
-
-        # Conteúdo do log (inicialmente oculto)
+        self.toggle_log_btn = ctk.CTkButton(log_header, text="📋 Mostrar Log ▼", command=self._toggle_log, width=150, fg_color="transparent", hover_color=("gray80","gray30"))
+        self.toggle_log_btn.pack(side="left", padx=6)
         self.log_content_frame = ctk.CTkFrame(log_frame, fg_color="transparent")
+        self.log_text = ctk.CTkTextbox(self.log_content_frame, wrap="word", font=ctk.CTkFont(family="Courier", size=11))
+        self.log_text.pack(fill="both", expand=True, padx=8, pady=8)
+        self.log_content_frame.pack_forget()
 
-        self.log_text = ctk.CTkTextbox(
-            self.log_content_frame,
-            wrap="word",
-            font=ctk.CTkFont(family="Courier", size=11),
-        )
-        self.log_text.pack(fill="both", expand=True, padx=10, pady=5)
-        # Começa com log em estado normal para permitir escrita
+        # Logout button
+        ctk.CTkButton(main_frame, text="Sair (logout)", fg_color="gray", command=self._logout).pack(pady=8)
 
-    def _browse_folder(self):
-        """Abre diálogo para selecionar pasta"""
-        folder = filedialog.askdirectory(title="Selecionar Pasta de Saída")
+        self.update_idletasks()
+
+    # ---------- UI helpers ----------
+    def _clear(self):
+        for w in self.winfo_children():
+            w.destroy()
+
+    def _browse_output(self):
+        folder = filedialog.askdirectory(title="Selecionar pasta de saída")
         if folder:
             self.output_entry.delete(0, "end")
             self.output_entry.insert(0, folder)
 
-    def _toggle_log_visibility(self):
-        """Alterna visibilidade do log"""
+    def _toggle_log(self):
         if self.log_visible.get():
             self.log_content_frame.pack_forget()
-            self.toggle_log_btn.configure(
-                text=self._label_with_emoji("Mostrar Log ▼", "📋")
-            )
+            self.toggle_log_btn.configure(text="📋 Mostrar Log ▼")
             self.log_visible.set(False)
         else:
-            self.log_content_frame.pack(fill="both", expand=True, padx=0, pady=0)
-            self.toggle_log_btn.configure(
-                text=self._label_with_emoji("Ocultar Log ▲", "📋")
-            )
+            self.log_content_frame.pack(fill="both", expand=True, padx=6, pady=4)
+            self.toggle_log_btn.configure(text="📋 Ocultar Log ▲")
             self.log_visible.set(True)
-        self.root.update_idletasks()
+        self.update_idletasks()
 
-    def _log(self, message: str):
-        """Adiciona mensagem ao log"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        formatted_message = f"[{timestamp}] {message}"
-
+    def _log(self, msg: str):
+        ts = datetime.now().strftime("%H:%M:%S")
+        line = f"[{ts}] {msg}"
         try:
             self.log_text.configure(state="normal")
-            self.log_text.insert("end", formatted_message + "\n")
+            self.log_text.insert("end", line + "\n")
             self.log_text.see("end")
             self.log_text.configure(state="disabled")
         except Exception:
-            # Se algo falhar no widget, imprimir no console para diagnóstico
-            print(formatted_message)
+            print(line)
 
-    def _validate_inputs(self) -> bool:
-        """Valida os campos de entrada"""
-        # API ID
-        api_id = self.api_id_entry.get().strip()
-        if not api_id:
-            self._log("❌ Erro: API ID é obrigatório!")
-            return False
+    # ---------- Config saving/loading from main UI ----------
+    def _save_ui_config(self):
+        cfg = load_config() or {}
+        cfg.update({
+            "target": self.target_entry.get().strip(),
+            "tags": self.tags_entry.get().strip(),
+            "output_path": self.output_entry.get().strip(),
+            "limit": self.limit_entry.get().strip(),
+            "session_name": self.session_entry.get().strip() or cfg.get("session_name", "session"),
+            "max_flood_wait": self.max_flood_entry.get().strip(),
+            "name_line": self.name_line_var.get(),
+        })
+        save_config(cfg)
+        self.config = cfg
+        messagebox.showinfo("Sucesso", "Configuração salva em config.json (pasta src/)")
+        self._log("✅ Configuração salva em config.json")
 
+    def _load_config_file(self):
+        file_path = filedialog.askopenfilename(title="Carregar Configuração", filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
+        if not file_path:
+            return
         try:
-            int(api_id)
-        except ValueError:
-            self._log("❌ Erro: API ID deve ser um número!")
-            return False
+            with open(file_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            # apply to fields
+            if "target" in cfg:
+                self.target_entry.delete(0, "end"); self.target_entry.insert(0, cfg.get("target",""))
+            if "tags" in cfg:
+                self.tags_entry.delete(0, "end"); self.tags_entry.insert(0, cfg.get("tags",""))
+            if "output_path" in cfg:
+                self.output_entry.delete(0, "end"); self.output_entry.insert(0, cfg.get("output_path","./downloads"))
+            if "limit" in cfg:
+                self.limit_entry.delete(0, "end"); self.limit_entry.insert(0, str(cfg.get("limit","0")))
+            if "session_name" in cfg:
+                self.session_entry.delete(0, "end"); self.session_entry.insert(0, cfg.get("session_name","session"))
+            if "max_flood_wait" in cfg:
+                self.max_flood_entry.delete(0, "end"); self.max_flood_entry.insert(0, str(cfg.get("max_flood_wait","300")))
+            if "name_line" in cfg:
+                self.name_line_var.set(cfg.get("name_line","última"))
+            messagebox.showinfo("Sucesso", f"Configuração carregada de:\n{file_path}")
+            self._log(f"✅ Configuração carregada: {file_path}")
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao carregar configuração:\n{e}")
+            self._log(f"❌ Erro ao carregar configuração: {e}")
 
-        # API Hash
-        if not self.api_hash_entry.get().strip():
-            self._log("❌ Erro: API Hash é obrigatório!")
-            return False
+    # ---------- Logout ----------
+    def _logout(self):
+        session_name = (self.session_entry.get().strip() or self.config.get("session_name", "session"))
+        if messagebox.askyesno("Confirmar logout", "Deseja limpar config.json e a sessão local?"):
+            delete_config_and_session(session_name)
+            messagebox.showinfo("Logout", "Sessão e config removidos. O app será reiniciado para o login.")
+            # restart UI to login
+            self.config = {}
+            self._build_login_interface()
 
-        # Target
-        if not self.target_entry.get().strip():
+    # ---------- Validate main inputs ----------
+    def _validate_main_inputs(self) -> bool:
+        target = self.target_entry.get().strip()
+        if not target:
             self._log("❌ Erro: Canal/Grupo é obrigatório!")
             return False
-
-        # Tags
         tags_text = self.tags_entry.get().strip()
         if not tags_text:
             self._log("❌ Erro: Tags são obrigatórias!")
             return False
-
-        # Processa tags
-        tags_list = [
-            tag.strip() for tag in tags_text.replace(" ", ",").split(",") if tag.strip()
-        ]
-
+        tags_list = [t.strip() for t in tags_text.replace(" ", ",").split(",") if t.strip()]
         if not tags_list:
             self._log("❌ Erro: Nenhuma tag válida encontrada!")
             return False
-
-        # Atualiza campo com tags formatadas
-        self.tags_entry.delete(0, "end")
-        self.tags_entry.insert(0, ", ".join(tags_list))
-
-        # Diretório de saída
-        output_dir = self.output_entry.get().strip()
-        if not output_dir:
+        # update formatted tags
+        self.tags_entry.delete(0, "end"); self.tags_entry.insert(0, ", ".join(tags_list))
+        out = self.output_entry.get().strip()
+        if not out:
             self._log("❌ Erro: Diretório de saída é obrigatório!")
             return False
-
+        # try create dir if not exists
+        try:
+            Path(out).mkdir(parents=True, exist_ok=True)
+        except Exception:
+            self._log("❌ Erro: Diretório de saída inválido ou não pode ser criado!")
+            return False
+        try:
+            int(self.limit_entry.get().strip())
+        except Exception:
+            self._log("❌ Erro: Limite deve ser um número!")
+            return False
+        try:
+            int(self.max_flood_entry.get().strip())
+        except Exception:
+            self._log("❌ Erro: Max Flood Wait deve ser um número!")
+            return False
+        if not self.session_entry.get().strip():
+            self._log("❌ Erro: Nome da sessão é obrigatório!")
+            return False
         return True
 
-    def _get_config_from_inputs(self) -> DownloadConfig:
-        """Obtém configuração dos campos de entrada"""
-        config = DownloadConfig()
-        config.api_id = self.api_id_entry.get().strip()
-        config.api_hash = self.api_hash_entry.get().strip()
-        config.target = self.target_entry.get().strip()
-        config.tags = self.tags_entry.get().strip()
-        config.output_path = self.output_entry.get().strip()
-        config.limit = self.limit_entry.get().strip()
-        config.session = self.session_entry.get().strip()
-        config.max_flood_wait = self.max_flood_entry.get().strip()
-        config.name_line = self.name_line_var.get()
-        config.use_emojis = bool(self.use_emojis_var.get())
-        return config
-
-    def _set_inputs_from_config(self, config: DownloadConfig):
-        """Define campos de entrada a partir da configuração"""
-        # Limpar campos
-        for entry in [
-            self.api_id_entry,
-            self.api_hash_entry,
-            self.target_entry,
-            self.tags_entry,
-            self.output_entry,
-            self.limit_entry,
-            self.session_entry,
-            self.max_flood_entry,
-        ]:
-            entry.delete(0, "end")
-
-        # Preencher
-        self.api_id_entry.insert(0, config.api_id)
-        self.api_hash_entry.insert(0, config.api_hash)
-        self.target_entry.insert(0, config.target)
-        self.tags_entry.insert(0, config.tags)
-        self.output_entry.insert(0, config.output_path)
-        self.limit_entry.insert(0, config.limit)
-        self.session_entry.insert(0, config.session)
-        self.max_flood_entry.insert(0, config.max_flood_wait)
-        self.name_line_var.set(config.name_line)
-        self.use_emojis_var.set(bool(config.use_emojis))
-
-    def _save_config(self):
-        """Salva configuração em arquivo JSON"""
-        config = self._get_config_from_inputs()
-
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            title="Salvar Configuração",
-        )
-
-        if file_path:
-            try:
-                with open(file_path, "w", encoding="utf-8") as f:
-                    json.dump(config.to_dict(), f, indent=4, ensure_ascii=False)
-                messagebox.showinfo("Sucesso", f"Configuração salva em:\n{file_path}")
-                self._log(f"✅ Configuração salva: {file_path}")
-            except Exception as e:
-                messagebox.showerror("Erro", f"Erro ao salvar configuração:\n{e}")
-                self._log(f"❌ Erro ao salvar configuração: {e}")
-
-    def _load_config(self):
-        """Carrega configuração de arquivo JSON"""
-        file_path = filedialog.askopenfilename(
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            title="Carregar Configuração",
-        )
-
-        if file_path:
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-
-                config = DownloadConfig()
-                config.from_dict(data)
-                self._set_inputs_from_config(config)
-
-                messagebox.showinfo(
-                    "Sucesso", f"Configuração carregada de:\n{file_path}"
-                )
-                self._log(f"✅ Configuração carregada: {file_path}")
-
-            except json.JSONDecodeError:
-                messagebox.showerror("Erro", "Arquivo JSON inválido!")
-                self._log("❌ Erro: Arquivo JSON inválido")
-            except Exception as e:
-                messagebox.showerror("Erro", f"Erro ao carregar configuração:\n{e}")
-                self._log(f"❌ Erro ao carregar configuração: {e}")
-
+    # ---------- Download threading & async wrapper ----------
     def _start_download(self):
-        """Inicia o processo de download"""
-        if not self._validate_inputs():
+        if not self._validate_main_inputs():
             return
-
-        # Atualizar estado
         self.downloading = True
         self.download_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
-
-        # Limpar log
+        # clear log box
         try:
             self.log_text.configure(state="normal")
             self.log_text.delete("1.0", "end")
             self.log_text.configure(state="disabled")
         except Exception:
             pass
-
-        # Resetar progresso
         self.progress_bar.set(0)
         self.progress_label.configure(text="Iniciando...")
         self.current_file_label.configure(text="Preparando...")
-
-        # Mostrar log
         if not self.log_visible.get():
-            self._toggle_log_visibility()
-
-        self.root.update_idletasks()
-
-        # Iniciar thread de download
-        download_thread = threading.Thread(target=self._run_download, daemon=True)
-        download_thread.start()
+            self._toggle_log()
+        self.update_idletasks()
+        threading.Thread(target=lambda: asyncio.run(self._download_videos_async()), daemon=True).start()
 
     def _stop_download(self):
-        """Para o processo de download"""
         self.downloading = False
         self._log("⏹ Parando download...")
         self.download_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
-        self.root.update_idletasks()
+        self.update_idletasks()
 
-    def _run_download(self):
-        """Executa o download (thread separada)"""
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self._download_videos_async())
-        except Exception as e:
-            self._log(f"❌ Erro fatal: {e}")
-            import traceback
-
-            self._log(traceback.format_exc())
-        finally:
-            # Garantir que UI seja atualizada no thread principal
-            self.root.after(0, self._on_download_finished)
-
-    def _on_download_finished(self):
-        """Callback quando download termina"""
-        self.download_btn.configure(state="normal")
-        self.stop_btn.configure(state="disabled")
-        status = "Concluído" if not self.downloading else "Interrompido"
-        self.progress_label.configure(text=status)
-        self.current_file_label.configure(text="Nenhum arquivo em andamento")
-        self.downloading = False
-
-    def _progress_callback(
-        self, current: int, total: int, filepath: Optional[str] = None
-    ):
-        """Callback de progresso do download"""
-        if total <= 0:
+    # ---------- Core download logic (async) ----------
+    async def _download_videos_async(self):
+        cfg = load_config() or self.config or {}
+        if not cfg.get("api_id") or not cfg.get("api_hash"):
+            self._log("❌ Erro: api_id/api_hash não encontrados no config.json. Faça login novamente.")
+            self.after(0, lambda: self.download_btn.configure(state="normal"))
             return
 
-        progress = float(current) / float(total)
+        api_id = int(cfg["api_id"])
+        api_hash = cfg["api_hash"]
 
-        # Calcular velocidade
-        current_time = time.time()
-        time_diff = current_time - self.last_progress_time
-        bytes_diff = current - self.last_progress_bytes
+        # UI fields override config fields
+        target = self.target_entry.get().strip()
+        tags_str = self.tags_entry.get().strip()
+        out_path = self.output_entry.get().strip()
+        limit = int(self.limit_entry.get().strip() or 0)
+        session_name = self.session_entry.get().strip() or cfg.get("session_name", "session")
+        max_flood_wait = int(self.max_flood_entry.get().strip() or cfg.get("max_flood_wait", 300))
+        name_line_choice = self.name_line_var.get()
 
-        speed_mb = (bytes_diff / time_diff / (1024 * 1024)) if time_diff > 0 else 0
-
-        self.last_progress_time = current_time
-        self.last_progress_bytes = current
-
-        # Tamanhos
-        current_mb = current / (1024 * 1024)
-        total_mb = total / (1024 * 1024)
-
-        # ETA
-        if speed_mb > 0 and current > 0:
-            bytes_remaining = total - current
-            eta_seconds = bytes_remaining / (speed_mb * 1024 * 1024)
-            eta_min = int(eta_seconds // 60)
-            eta_sec = int(eta_seconds % 60)
-            eta_str = f"ETA: {eta_min}m{eta_sec:02d}s"
-        else:
-            eta_str = "ETA: --"
-
-        # Atualizar UI
-        self.root.after(
-            0,
-            self._update_progress_ui,
-            progress,
-            current_mb,
-            total_mb,
-            speed_mb,
-            eta_str,
-            filepath,
-        )
-
-    def _update_progress_ui(
-        self,
-        progress: float,
-        current_mb: float,
-        total_mb: float,
-        speed_mb: float,
-        eta_str: str,
-        filename: Optional[str] = None,
-    ):
-        """Atualiza UI com informações de progresso"""
-        try:
-            self.progress_bar.set(progress)
-
-            progress_text = (
-                f"{progress * 100:.1f}% ({current_mb:.1f}/{total_mb:.1f} MB) - "
-                f"{speed_mb:.2f} MB/s - {eta_str}"
-            )
-            self.progress_label.configure(text=progress_text)
-
-            if filename:
-                self.current_file_label.configure(
-                    text=f"📥 {os.path.basename(filename)}"
-                )
-            elif not self.downloading:
-                self.current_file_label.configure(text="Nenhum arquivo em andamento")
-        except Exception as e:
-            print(f"Erro ao atualizar UI: {e}")
-
-    def _extract_video_name(self, message_text: str, msg_id: int) -> str:
-        """Extrai o nome do vídeo da mensagem"""
-        lines = [l.strip() for l in (message_text or "").split("\n") if l.strip()]
-
-        if not lines:
-            return f"msg{msg_id}"
-
-        line_choice = self.name_line_var.get()
-
-        if line_choice == "primeira":
-            video_name = lines[0]
-        elif line_choice == "segunda":
-            video_name = lines[1] if len(lines) > 1 else lines[0]
-        elif line_choice == "terceira":
-            video_name = lines[2] if len(lines) > 2 else lines[-1]
-        else:  # última
-            video_name = lines[-1]
-
-        # Remove caracteres '=' do início
-        while video_name.startswith("="):
-            video_name = video_name[1:].strip()
-
-        return video_name
-
-    async def _download_videos_async(self):
-        """Função assíncrona principal de download"""
-        config = self._get_config_from_inputs()
-
-        # Parâmetros
-        api_id = int(config.api_id)
-        api_hash = config.api_hash
-        target = config.target
-        out_path = config.output_path
-        limit = int(config.limit) if config.limit else 0
-        session = config.session
-        max_flood_wait = int(config.max_flood_wait)
-
-        # Criar pasta
+        # Ensure output dir
         Path(out_path).mkdir(parents=True, exist_ok=True)
 
-        # Processar tags
-        tags = [t.strip() for t in config.tags.split(",") if t.strip()]
+        # Prepare CSV path in output and a backup in src
+        csv_path_out = os.path.join(out_path, "videos_baixados.csv")
+        csv_backup_path = os.path.join(BASE_DIR, f"videos_baixados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+
+        tags = [t.strip() for t in tags_str.split(",") if t.strip()]
         if not tags:
             self._log("❌ Nenhuma tag válida informada!")
+            self.after(0, lambda: self.download_btn.configure(state="normal"))
             return
 
-        # Cliente Telegram
-        client = TelegramClient(session, api_id, api_hash)
-
+        client = TelegramClient(os.path.join(BASE_DIR, session_name), api_id, api_hash)
         try:
             await client.start()
             me = await client.get_me()
-            user_repr = (
-                getattr(me, "username", None)
-                or getattr(me, "first_name", None)
-                or str(me)
-            )
-            self._log(f"✅ Conectado como: {user_repr}")
+            self._log(f"✅ Conectado como: {getattr(me,'username',None) or getattr(me,'first_name',str(me))}")
         except Exception as e:
             self._log(f"❌ Erro ao conectar: {e}")
             return
 
-        # Estatísticas
-        csv_path = Path(out_path) / "videos_baixados.csv"
-        registros = []
+        registros: List[Dict] = []
         total_baixados = 0
         total_encontrados = 0
 
-        # Resolver entidade fora do loop para evitar múltiplas resoluções
-        entity = await self._resolve_entity_with_retry(client, target, max_flood_wait)
-        if not entity:
-            await client.disconnect()
-            return
-
-        # Processar cada tag
         for tag in tags:
             if not self.downloading:
                 self._log("⏹ Download cancelado pelo usuário.")
                 break
 
             self._log(f"\n🔍 Procurando vídeos com a tag: {tag}")
+            count_tag = 0
 
-            try:
-                count_tag, tb, te = await self._process_messages_for_tag(
-                    client,
-                    entity,
-                    tag,
-                    limit,
-                    out_path,
-                    registros,
-                    set(),
-                    max_flood_wait,
-                )
-                total_baixados += tb
-                total_encontrados += te
+            # resolve entity with FloodWait handling
+            entity = None
+            while self.downloading and entity is None:
+                try:
+                    entity = await client.get_input_entity(target)
+                except FloodWaitError as e:
+                    self._log(f"⏳ Flood wait ao resolver target ({e.seconds}s)")
+                    if e.seconds > max_flood_wait:
+                        self._log(f"❌ Flood wait muito longo ({e.seconds}s). Abortando.")
+                        await client.disconnect()
+                        return
+                    self._log(f"→ Aguardando {e.seconds}s...")
+                    await asyncio.sleep(e.seconds + 1)
+                except Exception as e:
+                    self._log(f"❌ Erro ao resolver entidade: {e}")
+                    await client.disconnect()
+                    return
+
+            if not self.downloading:
+                break
+
+            seen_msg_ids = set()
+            while self.downloading:
+                try:
+                    async for msg in client.iter_messages(entity, search=tag, limit=(limit or None)):
+                        if not self.downloading:
+                            break
+
+                        if msg.id in seen_msg_ids:
+                            continue
+                        seen_msg_ids.add(msg.id)
+                        total_encontrados += 1
+
+                        if not msg.message or tag not in msg.message:
+                            continue
+                        if not getattr(msg, "media", None):
+                            continue
+
+                        is_video = getattr(msg, "video", None) is not None
+                        mime = getattr(msg.media, "mime_type", "") if msg.media else ""
+                        if not is_video and not mime.startswith("video"):
+                            # document heuristic
+                            try:
+                                d = getattr(msg.media, "document", None)
+                                if d is None:
+                                    continue
+                                attrs = getattr(d, "attributes", [])
+                                if not any("video" in str(a).lower() for a in attrs):
+                                    continue
+                            except Exception:
+                                continue
+
+                        # extract video name
+                        lines = [l.strip() for l in (msg.message or "").split("\n") if l.strip()]
+                        if not lines:
+                            video_name = f"msg{msg.id}"
+                        else:
+                            if name_line_choice == "primeira":
+                                video_name = lines[0]
+                            elif name_line_choice == "segunda":
+                                video_name = lines[1] if len(lines) > 1 else lines[0]
+                            elif name_line_choice == "terceira":
+                                video_name = lines[2] if len(lines) > 2 else lines[-1]
+                            else:
+                                video_name = lines[-1]
+                        while video_name.startswith("="):
+                            video_name = video_name[1:].strip()
+
+                        filename = safe_filename(video_name) + ".mp4"
+                        file_path = os.path.join(out_path, filename)
+
+                        if os.path.exists(file_path):
+                            self._log(f"⏩ Já existe: {filename}")
+                            continue
+
+                        try:
+                            self._log(f"⏬ Baixando: {filename}")
+
+                            # reset progress counters
+                            self.last_progress_time = time.time()
+                            self.last_progress_bytes = 0
+
+                            # update UI filename
+                            self.after(0, lambda f=file_path: self.current_file_label.configure(text=f"Arquivo: {os.path.basename(f)}"))
+
+                            def progress_wrapper(current, total):
+                                try:
+                                    if current is None or total is None:
+                                        return
+                                    self._progress_callback(current, total, file_path)
+                                except Exception:
+                                    pass
+
+                            await client.download_media(msg, file=file_path, progress_callback=progress_wrapper)
+
+                            self._log(f"✅ Concluído: {filename}")
+                            total_baixados += 1
+                            count_tag += 1
+                            registros.append({
+                                "tag": tag,
+                                "msg_id": msg.id,
+                                "data": msg.date.strftime("%Y-%m-%d %H:%M:%S") if msg.date else "",
+                                "arquivo": filename,
+                                "legenda": msg.message or "",
+                            })
+
+                        except FloodWaitError as e:
+                            self._log(f"⏳ Flood wait ({e.seconds}s) → aguardando...")
+                            if e.seconds <= max_flood_wait:
+                                await asyncio.sleep(e.seconds + 1)
+                                continue
+                            else:
+                                self._log("❌ Flood wait muito longo, pulando arquivo.")
+                                continue
+                        except Exception as e:
+                            self._log(f"❌ Erro ao baixar msg {msg.id}: {e}")
+                            try:
+                                if os.path.exists(file_path):
+                                    os.remove(file_path)
+                            except Exception:
+                                pass
+                            continue
+
+                    break  # finished iter_messages
+                except FloodWaitError as e:
+                    self._log(f"⏳ Flood wait durante iteração ({e.seconds}s)")
+                    if e.seconds > max_flood_wait:
+                        self._log(f"❌ Flood wait muito longo ({e.seconds}s). Abortando.")
+                        await client.disconnect()
+                        return
+                    self._log(f"→ Aguardando {e.seconds}s e reiniciando...")
+                    await asyncio.sleep(e.seconds + 1)
+                except Exception as e:
+                    self._log(f"❌ Erro ao processar mensagens: {e}")
+                    break
+
+            if self.downloading:
                 self._log(f"✅ Tag {tag}: {count_tag} vídeos baixados.")
-            except Exception as e:
-                self._log(f"❌ Erro ao processar tag {tag}: {e}")
 
-        await client.disconnect()
+        # disconnect
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
 
-        # Salvar CSV
+        # save CSV in output and backup in src/
         if registros:
             try:
                 df = pd.DataFrame(registros)
-                df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-                self._log(f"\n📄 CSV salvo em: {csv_path}")
+                df.to_csv(csv_path_out, index=False, encoding="utf-8-sig")
+                df.to_csv(csv_backup_path, index=False, encoding="utf-8-sig")
+                self._log(f"\n📄 CSV salvo em: {csv_path_out}")
+                self._log(f"📄 Cópia do CSV salva em: {csv_backup_path}")
             except Exception as e:
                 self._log(f"❌ Erro ao salvar CSV: {e}")
 
-        self._log(
-            f"\n🚀 Finalizado: {total_baixados} vídeos baixados ({total_encontrados} mensagens verificadas)."
-        )
-        self.progress_bar.set(1)
-        self.progress_label.configure(text="Concluído!")
+        self._log(f"\n🚀 Finalizado: {total_baixados} vídeos baixados ({total_encontrados} mensagens verificadas).")
+        self.after(0, lambda: self.progress_bar.set(1))
+        self.after(0, lambda: self.progress_label.configure(text="Concluído!"))
+        self.downloading = False
+        self.after(0, lambda: self.download_btn.configure(state="normal"))
+        self.after(0, lambda: self.stop_btn.configure(state="disabled"))
 
-    async def _resolve_entity_with_retry(
-        self, client, target: str, max_flood_wait: int
-    ):
-        """Resolve entidade do Telegram com retry em caso de FloodWait"""
-        while self.downloading:
-            try:
-                entity = await client.get_input_entity(target)
-                return entity
-            except FloodWaitError as e:
-                self._log(f"⏳ Flood wait ao resolver target ({e.seconds}s)")
-                if e.seconds > max_flood_wait:
-                    self._log(f"❌ Flood wait muito longo ({e.seconds}s). Abortando.")
-                    return None
-                self._log(f"→ Aguardando {e.seconds}s...")
-                await asyncio.sleep(e.seconds + 1)
-            except Exception as e:
-                self._log(f"❌ Erro ao resolver entidade: {e}")
-                return None
-        return None
-
-    async def _process_messages_for_tag(
-        self,
-        client,
-        entity,
-        tag: str,
-        limit: int,
-        out_path: str,
-        registros: List[Dict],
-        seen_msg_ids: set,
-        max_flood_wait: int,
-    ) -> Tuple[int, int, int]:
-        """Processa mensagens para uma tag específica
-
-        Retorna (count_tag, total_baixados_para_essa_tag, total_encontrados_para_essa_tag)
-        """
-        count_tag = 0
-        total_baixados = 0
-        total_encontrados = 0
-
-        while self.downloading:
-            try:
-                async for msg in client.iter_messages(
-                    entity, search=tag, limit=(limit or None)
-                ):
-                    if not self.downloading:
-                        break
-
-                    # Evitar duplicatas
-                    if msg.id in seen_msg_ids:
-                        continue
-                    seen_msg_ids.add(msg.id)
-                    total_encontrados += 1
-
-                    # Verificar se tem a tag na mensagem (sensível a caixa)
-                    if not msg.message or tag not in msg.message:
-                        continue
-
-                    # Verificar se tem mídia de vídeo
-                    if not getattr(msg, "media", None):
-                        continue
-
-                    # Tentar detectar se é vídeo
-                    is_video = getattr(msg, "video", None) is not None
-                    mime = getattr(getattr(msg, "media", None), "mime_type", "") or ""
-
-                    if not is_video and not mime.startswith("video"):
-                        # também aceitar documents que contenham video mime
-                        try:
-                            # Telethon salva algumas mídias como Document; verificar attributes
-                            d = getattr(msg.media, "document", None)
-                            if d is None:
-                                continue
-                            attrs = getattr(d, "attributes", [])
-                            # Se houver algum attribute relacionado a video, aceitar
-                            if not any("video" in str(a).lower() for a in attrs):
-                                continue
-                        except Exception:
-                            continue
-
-                    # Extrair nome do vídeo
-                    video_name = self._extract_video_name(msg.message, msg.id)
-                    filename = safe_filename(video_name) + ".mp4"
-                    file_path = os.path.join(out_path, filename)
-
-                    # Verificar se já existe
-                    if os.path.exists(file_path):
-                        self._log(f"⏩ Já existe: {filename}")
-                        continue
-
-                    # Fazer download
-                    success = await self._download_single_video(
-                        client, msg, file_path, filename, max_flood_wait
-                    )
-
-                    if success:
-                        total_baixados += 1
-                        count_tag += 1
-
-                        # Registrar no CSV
-                        registros.append(
-                            {
-                                "tag": tag,
-                                "msg_id": msg.id,
-                                "data": (
-                                    msg.date.strftime("%Y-%m-%d %H:%M:%S")
-                                    if msg.date
-                                    else ""
-                                ),
-                                "arquivo": filename,
-                                "legenda": msg.message or "",
-                            }
-                        )
-
-                # Se terminou a iteração sem FloodWait, sair do loop
-                break
-
-            except FloodWaitError as e:
-                self._log(f"⏳ Flood wait durante iteração ({e.seconds}s)")
-                if e.seconds > max_flood_wait:
-                    self._log(f"❌ Flood wait muito longo ({e.seconds}s). Abortando.")
-                    return count_tag, total_baixados, total_encontrados
-                self._log(f"→ Aguardando {e.seconds}s e reiniciando...")
-                await asyncio.sleep(e.seconds + 1)
-            except Exception as e:
-                self._log(f"❌ Erro ao processar mensagens: {e}")
-                break
-
-        return count_tag, total_baixados, total_encontrados
-
-    async def _download_single_video(
-        self, client, msg, file_path: str, filename: str, max_flood_wait: int
-    ) -> bool:
-        """Faz download de um único vídeo com tratamento de erros"""
+    # ---------- Progress helpers ----------
+    def _progress_callback(self, current: int, total: int, filepath: Optional[str] = None):
+        if total <= 0:
+            return
         try:
-            self._log(f"⏬ Baixando: {filename}")
-
-            # Resetar variáveis de progresso
-            self.last_progress_time = time.time()
-            self.last_progress_bytes = 0
-
-            # Atualizar nome do arquivo na UI
-            self.root.after(
-                0, lambda: self.current_file_label.configure(text=f"📥 {filename}")
-            )
-
-            # Função wrapper para callback
-            def progress_wrapper(current, total):
-                # Alguns callbacks podem chamar com None; proteger
-                try:
-                    if current is None or total is None:
-                        return
-                    self._progress_callback(int(current), int(total), file_path)
-                except Exception:
-                    pass
-
-            # Download
-            await client.download_media(
-                msg, file=file_path, progress_callback=progress_wrapper
-            )
-
-            self._log(f"✅ Concluído: {filename}")
-            return True
-
-        except FloodWaitError as e:
-            self._log(f"⏳ Flood wait ({e.seconds}s) → aguardando...")
-            if e.seconds <= max_flood_wait and self.downloading:
-                await asyncio.sleep(e.seconds + 1)
-                # Tentar novamente
-                return await self._download_single_video(
-                    client, msg, file_path, filename, max_flood_wait
-                )
+            progress = float(current) / float(total) if total else 0.0
+            current_time = time.time()
+            time_diff = current_time - self.last_progress_time
+            bytes_diff = current - self.last_progress_bytes
+            speed_mb = (bytes_diff / time_diff / (1024 * 1024)) if time_diff > 0 else 0.0
+            self.last_progress_time = current_time
+            self.last_progress_bytes = current
+            current_mb = current / (1024 * 1024)
+            total_mb = total / (1024 * 1024)
+            if speed_mb > 0 and current > 0:
+                bytes_remaining = total - current
+                # speed_mb is MB/s; convert to bytes/s for ETA calc or use MB units consistently
+                # bytes_remaining / (speed_mb * 1024*1024)
+                eta_seconds = int(bytes_remaining / (speed_mb * 1024 * 1024)) if speed_mb > 0 else 0
+                eta_min = eta_seconds // 60
+                eta_sec = eta_seconds % 60
+                eta_str = f"ETA: {eta_min}m{eta_sec:02d}s"
             else:
-                self._log(f"❌ Flood wait muito longo, pulando arquivo")
-                return False
+                eta_str = "ETA: --"
+            # schedule UI update
+            self.after(0, self._update_progress_ui, progress, current_mb, total_mb, speed_mb, eta_str, filepath)
+        except Exception:
+            pass
+
+    def _update_progress_ui(self, progress, current_mb, total_mb, speed_mb, eta_str, filename=None):
+        try:
+            self.progress_bar.set(progress)
+            progress_text = f"{progress * 100:.1f}% ({current_mb:.1f}/{total_mb:.1f} MB) - {speed_mb:.2f} MB/s - {eta_str}"
+            self.progress_label.configure(text=progress_text)
+            if filename:
+                self.current_file_label.configure(text=f"Arquivo: {os.path.basename(filename)}")
+            elif not self.downloading:
+                self.current_file_label.configure(text="Nenhum arquivo em andamento")
         except Exception as e:
-            self._log(f"❌ Erro ao baixar {filename}: {e}")
-            # Remover arquivo parcial se existir
-            if os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                except Exception:
-                    pass
-            return False
+            print(f"Erro ao atualizar UI: {e}")
 
+    # ---------- run ----------
     def run(self):
-        """Inicia a aplicação"""
-        self.root.mainloop()
+        self.mainloop()
 
 
-def main():
-    """Função principal"""
+# ---------- Entrypoint ----------
+if __name__ == "__main__":
     app = TelegramDownloaderGUI()
     app.run()
-
-
-if __name__ == "__main__":
-    main()

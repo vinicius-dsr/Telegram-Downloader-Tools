@@ -27,10 +27,11 @@ ENV/
 # Session files
 session.session
 *.session
-telegram_downloader_config.json
-
-# Config files
+*.session-journal
 *.json
+
+# Config file
+config.json
 
 # Environment variables
 .env
