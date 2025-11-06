@@ -280,6 +280,12 @@ pip install customtkinter --upgrade
 
 ---
 
+## ☕ Apoie o Projeto
+
+Se você gostou do projeto e gostaria de apoiar o desenvolvimento, considere me pagar um café! Isso ajuda a manter o projeto ativo e com melhorias constantes.
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://viniciusreis.site/coffee)
+
 ## 🤝 Contribuição
 
 Sinta-se à vontade para contribuir com melhorias ou correções. Faça um fork do repositório e envie um pull request.
