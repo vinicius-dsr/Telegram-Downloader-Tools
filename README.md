@@ -20,6 +20,32 @@ Este projeto permite baixar vídeos do Telegram utilizando múltiplas hashtags. 
 3. Preencha o formulário para criar uma nova aplicação (App title, Short name, etc.)
 4. Você verá seu **api_id** e **api_hash**
 
+## 🔐 Fluxo de Autenticação
+
+Agora o aplicativo possui um fluxo de autenticação simplificado e seguro:
+
+### Primeiro Acesso
+1. Ao iniciar o aplicativo pela primeira vez, você verá a tela de login
+2. Preencha os seguintes campos:
+   - **API ID**: Seu ID da API do Telegram
+   - **API Hash**: Seu hash da API do Telegram
+   - **Telefone**: Número de telefone com código do país (ex: +5511987654321)
+
+3. Clique em "Conectar e enviar código"
+4. Um código de verificação será enviado para sua conta do Telegram
+5. Insira o código recebido na janela de confirmação
+6. Se sua conta tiver autenticação de dois fatores (2FA), você será solicitado a inserir a senha
+
+### Próximos Acessos
+- Suas credenciais são salvas de forma segura no seu computador
+- O aplicativo tentará reconectar automaticamente usando a sessão anterior
+- Se precisar fazer login novamente, você pode apagar o arquivo de configuração e a sessão através do menu de configurações
+
+### Dicas de Segurança
+- Mantenha suas credenciais da API em segredo
+- Nunca compartilhe códigos de verificação ou senhas
+- Se estiver usando um computador compartilhado, certifique-se de fazer logout adequadamente
+
 ## 🚀 Instalação
 
 1. Clone o repositório:
