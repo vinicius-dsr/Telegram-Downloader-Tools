@@ -271,6 +271,18 @@ pip install customtkinter --upgrade
 - Aumente o valor de "Max Flood Wait"
 - Ou aguarde manualmente e tente novamente mais tarde
 
+### Erro "Can't find a usable init.tcl"
+Este erro ocorre quando o Python não consegue encontrar as bibliotecas Tcl/Tk do sistema.
+O projeto inclui um script de correção automática que tenta localizar essas bibliotecas.
+
+Ele é executado automaticamente ao iniciar a GUI, mas se você precisar depurar ou verificar se as bibliotecas são encontradas:
+
+```bash
+python src/tcl_fix.py
+```
+
+Se o script não encontrar as bibliotecas, você precisará instalá-las no seu sistema (ex: `sudo apt install python3-tk tk-dev` no Linux).
+
 ---
 
 ## 📺 Canais do Telegram

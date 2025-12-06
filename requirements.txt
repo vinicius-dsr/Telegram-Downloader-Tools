@@ -7,8 +7,6 @@ python-dateutil==2.9.0.post0
 pytz==2025.2
 rsa==4.9.1
 six==1.17.0
-Tcl==0.2
 Telethon==1.42.0
-tk==0.1.0
 ttkbootstrap==1.19.2
 tzdata==2025.2
