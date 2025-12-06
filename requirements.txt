@@ -1,3 +1,14 @@
-telethon>=1.28.5
-pandas>=1.5.0
-ttkbootstrap>=1.10.1
+numpy==2.3.5
+pandas==2.3.3
+pillow==12.0.0
+pyaes==1.6.1
+pyasn1==0.6.1
+python-dateutil==2.9.0.post0
+pytz==2025.2
+rsa==4.9.1
+six==1.17.0
+Tcl==0.2
+Telethon==1.42.0
+tk==0.1.0
+ttkbootstrap==1.19.2
+tzdata==2025.2
