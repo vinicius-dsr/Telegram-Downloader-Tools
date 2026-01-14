@@ -9,4 +9,5 @@ rsa==4.9.1
 six==1.17.0
 Telethon==1.42.0
 ttkbootstrap==1.19.2
+plyer
 tzdata==2025.2

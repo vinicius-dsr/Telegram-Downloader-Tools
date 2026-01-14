@@ -13,6 +13,7 @@ import pandas as pd
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from tkinter import messagebox, filedialog
+from plyer import notification
 
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError, SessionPasswordNeededError
@@ -538,7 +539,9 @@ class TelegramDownloaderGUI(ttk.Window):
     async def _download_videos_async(self):
         cfg = load_config() or self.config or {}
         if not cfg.get("api_id") or not cfg.get("api_hash"):
-            self._log("❌ Erro: api_id/api_hash não encontrados no config.json. Faça login novamente.")
+            msg_err = "api_id/api_hash não encontrados no config.json.\nFaça login novamente."
+            self._log(f"❌ Erro: {msg_err}")
+            self._show_notification("Erro de Configuração", msg_err, "error")
             self.after(0, lambda: self.download_btn.configure(state="normal"))
             return
 
@@ -564,6 +567,7 @@ class TelegramDownloaderGUI(ttk.Window):
         tags = [t.strip() for t in tags_str.split(",") if t.strip()]
         if not tags:
             self._log("❌ Nenhuma tag válida informada!")
+            self._show_notification("Erro de Input", "Nenhuma tag válida informada!", "error")
             self.after(0, lambda: self.download_btn.configure(state="normal"))
             return
 
@@ -574,11 +578,13 @@ class TelegramDownloaderGUI(ttk.Window):
             self._log(f"✅ Conectado como: {getattr(me,'username',None) or getattr(me,'first_name',str(me))}")
         except Exception as e:
             self._log(f"❌ Erro ao conectar: {e}")
+            self._show_notification("Erro de Conexão", f"Não foi possível conectar ao Telegram:\n{e}", "error")
             return
 
         registros: List[Dict] = []
         total_baixados = 0
         total_encontrados = 0
+        total_erros = 0
 
         for tag in tags:
             if not self.downloading:
@@ -603,6 +609,7 @@ class TelegramDownloaderGUI(ttk.Window):
                     await asyncio.sleep(e.seconds + 1)
                 except Exception as e:
                     self._log(f"❌ Erro ao resolver entidade: {e}")
+                    self._show_notification("Erro de Target", f"Não foi possível encontrar o canal/grupo:\n{target}\n\nErro: {e}", "error")
                     await client.disconnect()
                     return
 
@@ -704,6 +711,7 @@ class TelegramDownloaderGUI(ttk.Window):
                                 continue
                         except Exception as e:
                             self._log(f"❌ Erro ao baixar msg {msg.id}: {e}")
+                            total_erros += 1
                             try:
                                 if os.path.exists(file_path):
                                     os.remove(file_path)
@@ -744,9 +752,18 @@ class TelegramDownloaderGUI(ttk.Window):
             except Exception as e:
                 self._log(f"❌ Erro ao salvar CSV: {e}")
 
-        self._log(f"\n🚀 Finalizado: {total_baixados} vídeos baixados ({total_encontrados} mensagens verificadas).")
+        self._log(f"\n🚀 Finalizado: {total_baixados} vídeos baixados ({total_encontrados} mensagens verificadas). Erros: {total_erros}")
         self.after(0, lambda: self.progress_bar.config(value=1))
         self.after(0, lambda: self.progress_label.configure(text="Concluído!"))
+        
+        # Notification
+        if total_erros > 0:
+            msg = f"Download concluído com alertas!\n\nBaixados: {total_baixados}\nErros: {total_erros}\nVerifique o log para detalhes."
+            self._show_notification("Concluído (com erros)", msg, "warning")
+        else:
+            msg = f"Download concluído com sucesso!\n\nBaixados: {total_baixados}\nTotal verificado: {total_encontrados}"
+            self._show_notification("Concluído", msg, "info")
+
         self.downloading = False
         self.after(0, lambda: self.download_btn.configure(state="normal"))
         self.after(0, lambda: self.stop_btn.configure(state="disabled"))
@@ -793,6 +810,39 @@ class TelegramDownloaderGUI(ttk.Window):
             print(f"Erro ao atualizar UI: {e}")
 
     # ---------- run ----------
+    def _show_notification(self, title: str, message: str, type_: str = "info"):
+        """
+        Thread-safe helper to show system notification using plyer.
+        It launches the notification in a separate thread to avoid freezing the GUI.
+        """
+        def _notify():
+            # map internal type to title prefix or icon logic if needed
+            title_prefix = ""
+            if type_ == "error":
+                title_prefix = "❌ "
+            elif type_ == "warning":
+                title_prefix = "⚠️ "
+            else:
+                title_prefix = "ℹ️ "
+            
+            clean_title = f"{title_prefix}{title}"
+
+            try:
+                notification.notify(
+                    title=clean_title,
+                    message=message,
+                    app_name="Telegram Downloader",
+                    timeout=10
+                )
+            except Exception as e:
+                print(f"Erro ao exibir notificação: {e}")
+                # Fallback to tkinter if plyer fails (e.g. missing dependencies on linux)
+                self.after(0, lambda: messagebox.showinfo(title, message) if type_ == "info" 
+                           else messagebox.showwarning(title, message) if type_ == "warning" 
+                           else messagebox.showerror(title, message))
+
+        threading.Thread(target=_notify, daemon=True).start()
+
     def run(self):
         self.mainloop()
 
