@@ -58,8 +58,10 @@ cd Telegram-Downloader-Tools
 ```bash
 pip install -r requirements.txt
 ```
-
-Ou no Windows, execute: `install_gui.bat`
+Se estiver usando Arch Linux instale o Tkinter:
+```bash
+sudo pacman -S tk
+```
 
 ---
 
