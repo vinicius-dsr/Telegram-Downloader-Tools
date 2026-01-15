@@ -70,6 +70,7 @@ def find_tcl_tk():
         print("WARNING: Could not locate init.tcl. Please ensure Tcl/Tk is installed.")
         print("On Debian/Ubuntu: sudo apt install python3-tk tk-dev")
         print("On Fedora: sudo dnf install python3-tkinter tk-devel")
+        print("On Arch Linux: sudo pacman -S tk")
     
     # Retry import/init to verify
     try:
