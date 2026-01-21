@@ -8,6 +8,8 @@ pytz==2025.2
 rsa==4.9.1
 six==1.17.0
 Telethon==1.42.0
+tk==0.1.0
+customtkinter==5.2.2
 ttkbootstrap==1.19.2
 plyer
 tzdata==2025.2
