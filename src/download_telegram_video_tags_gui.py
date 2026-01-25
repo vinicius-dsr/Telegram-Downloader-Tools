@@ -71,9 +71,14 @@ def delete_config_and_session(session_name: str = "session"):
 class TelegramDownloaderGUI(ttk.Window):
     def __init__(self):
         super().__init__(themename="darkly")
+        self._setup_theme()
         self.title("Telegram Video Downloader")
         self.geometry("900x800")
         self.minsize(800, 600)
+        try:
+            self.configure(background="#0F141A")
+        except Exception:
+            pass
 
         # state & stats
         self.config = load_config() or {}
@@ -82,6 +87,8 @@ class TelegramDownloaderGUI(ttk.Window):
         self.downloading = False
         self.last_progress_time = time.time()
         self.last_progress_bytes = 0
+        self.last_ui_update_time = 0.0
+        self._download_loop: Optional[asyncio.AbstractEventLoop] = None
 
         # Build initial UI depending on config/session
         if self.config and self._session_exists(self.config.get("session_name", "session")):
@@ -91,29 +98,64 @@ class TelegramDownloaderGUI(ttk.Window):
             # show login UI
             self._build_login_interface()
 
+    def _setup_theme(self):
+        style = ttk.Style()
+        self.font_title = ("Segoe UI Semibold", 22)
+        self.font_subtitle = ("Segoe UI", 11)
+        self.font_label = ("Segoe UI Semibold", 10)
+        self.font_body = ("Segoe UI", 10)
+        self.font_mono = ("Consolas", 10)
+        self.color_bg = "#0E1116"
+        self.color_panel = "#141A22"
+        self.color_panel_alt = "#141A22"
+        self.color_text = "#E6EAF0"
+        self.color_muted = "#AAB4C0"
+
+        style.configure("App.TFrame", background=self.color_bg)
+        style.configure("Panel.TFrame", background=self.color_panel)
+        style.configure("PanelAlt.TFrame", background=self.color_panel_alt)
+        style.configure("Title.TLabel", font=self.font_title, foreground=self.color_text)
+        style.configure("Subtitle.TLabel", font=self.font_subtitle, foreground=self.color_muted)
+        style.configure("Field.TLabel", font=self.font_label, foreground=self.color_text)
+        style.configure("App.TLabel", font=self.font_body, foreground=self.color_text)
+        style.configure("Header.TFrame", background=self.color_panel_alt)
+        style.configure("Header.TLabel", font=self.font_title, foreground=self.color_text, background=self.color_panel_alt)
+        style.configure("HeaderSub.TLabel", font=self.font_subtitle, foreground=self.color_muted, background=self.color_panel_alt)
+        style.configure("Section.TLabelframe", padding=14)
+        style.configure("Section.TLabelframe.Label", font=("Segoe UI Semibold", 11), foreground=self.color_text, background=self.color_panel)
+        style.configure("Section.TLabelframe", background=self.color_panel)
+        style.configure("Log.TLabelframe", padding=10)
+        style.configure("Log.TLabelframe.Label", font=("Segoe UI Semibold", 10), foreground=self.color_text, background=self.color_panel)
+        style.configure("Log.TLabelframe", background=self.color_panel)
+        style.configure("TButton", font=("Segoe UI Semibold", 10))
+
     # ---------- Login UI & Flow ----------
     def _build_login_interface(self):
-        frame = ttk.Frame(self, padding=18)
+        frame = ttk.Frame(self, padding=18, style="App.TFrame")
         frame.pack(fill="both", expand=True)
 
-        ttk.Label(frame, text="Configurar conta Telegram", font=("TkDefaultFont", 20, "bold")).pack(pady=(4, 12))
+        header = ttk.Frame(frame, padding=(16, 12), style="Header.TFrame")
+        header.pack(fill="x", pady=(4, 16))
+        ttk.Label(header, text="Telegram Video Downloader", style="Header.TLabel").pack(anchor="w")
+        ttk.Label(header, text="Conecte sua conta para iniciar os downloads.", style="HeaderSub.TLabel").pack(anchor="w", pady=(2, 0))
+        ttk.Frame(frame, height=1, style="Panel.TFrame").pack(fill="x", pady=(0, 16))
 
         # API ID
-        ttk.Label(frame, text="API ID:").pack(anchor="w")
+        ttk.Label(frame, text="API ID:", style="Field.TLabel").pack(anchor="w")
         self.login_api_id = ttk.Entry(frame, width=40)
         self.login_api_id.pack(fill="x", pady=(0, 8))
         if self.config.get("api_id"):
             self.login_api_id.insert(0, str(self.config.get("api_id")))
 
         # API Hash
-        ttk.Label(frame, text="API Hash:").pack(anchor="w")
+        ttk.Label(frame, text="API Hash:", style="Field.TLabel").pack(anchor="w")
         self.login_api_hash = ttk.Entry(frame, show="*", width=40)
         self.login_api_hash.pack(fill="x", pady=(0, 8))
         if self.config.get("api_hash"):
             self.login_api_hash.insert(0, self.config.get("api_hash"))
 
         # Phone
-        ttk.Label(frame, text="Telefone (ex: +55XXXXXXXXXXX):").pack(anchor="w")
+        ttk.Label(frame, text="Telefone (ex: +55XXXXXXXXXXX):", style="Field.TLabel").pack(anchor="w")
         self.login_phone = ttk.Entry(frame, width=25)
         self.login_phone.pack(fill="x", pady=(0, 8))
         if self.config.get("phone"):
@@ -124,9 +166,9 @@ class TelegramDownloaderGUI(ttk.Window):
         self.login_status.pack(pady=(4, 8))
 
         # buttons
-        btn_frame = ttk.Frame(frame)
+        btn_frame = ttk.Frame(frame, style="App.TFrame")
         btn_frame.pack(pady=12, fill="x")
-        ttk.Button(btn_frame, text="Conectar e enviar código", bootstyle="primary", command=self._start_login_thread).pack(side="left", expand=True, padx=6)
+        ttk.Button(btn_frame, text="Conectar e enviar código", bootstyle="success", command=self._start_login_thread).pack(side="left", expand=True, padx=6)
         ttk.Button(btn_frame, text="Sair", bootstyle="danger", command=self.destroy).pack(side="left", padx=6)
 
     def _start_login_thread(self):
@@ -226,6 +268,15 @@ class TelegramDownloaderGUI(ttk.Window):
         loop = asyncio.get_event_loop()
         fut = loop.create_future()
 
+        def _set_result_threadsafe(val: Optional[str]):
+            if fut.done():
+                return
+            try:
+                loop.call_soon_threadsafe(lambda: fut.set_result(val) if not fut.done() else None)
+            except Exception:
+                if not fut.done():
+                    fut.set_result(val)
+
         def show_dialog():
             dlg = ttk.Toplevel(self)
             dlg.title(title)
@@ -242,14 +293,12 @@ class TelegramDownloaderGUI(ttk.Window):
                 val = entry.get().strip()
                 dlg.grab_release()
                 dlg.destroy()
-                if not fut.done():
-                    fut.set_result(val)
+                _set_result_threadsafe(val)
 
             def _cancel():
                 dlg.grab_release()
                 dlg.destroy()
-                if not fut.done():
-                    fut.set_result(None)
+                _set_result_threadsafe(None)
 
             btns = ttk.Frame(dlg)
             btns.pack(pady=12)
@@ -273,31 +322,35 @@ class TelegramDownloaderGUI(ttk.Window):
             widget.destroy()
 
         # main container with padding
-        main_frame = ttk.Frame(self, padding=20)
+        main_frame = ttk.Frame(self, padding=20, style="App.TFrame")
         main_frame.pack(fill="both", expand=True)
 
-        ttk.Label(main_frame, text="Telegram Video Downloader", font=("TkDefaultFont", 24, "bold")).pack(pady=(8, 12))
+        header = ttk.Frame(main_frame, padding=(16, 12), style="Header.TFrame")
+        header.pack(fill="x", pady=(6, 16))
+        ttk.Label(header, text="Telegram Video Downloader", style="Header.TLabel").pack(anchor="w")
+        ttk.Label(header, text="Baixe vídeos por tags com controle total e histórico em CSV.", style="HeaderSub.TLabel").pack(anchor="w", pady=(2, 0))
+        ttk.Frame(main_frame, height=1, style="Panel.TFrame").pack(fill="x", pady=(0, 16))
 
-        input_frame = ttk.Labelframe(main_frame, text="Configurações", padding=15)
+        input_frame = ttk.Labelframe(main_frame, text="Configurações", style="Section.TLabelframe")
         input_frame.pack(fill="x", pady=(0, 15))
 
         input_frame.columnconfigure(1, weight=1)
 
         # Target
-        ttk.Label(input_frame, text="Canal/Grupo:", font=("TkDefaultFont", 10, "bold")).grid(row=0, column=0, sticky="w", padx=6, pady=5)
+        ttk.Label(input_frame, text="Canal/Grupo:", style="Field.TLabel").grid(row=0, column=0, sticky="w", padx=6, pady=5)
         self.target_entry = ttk.Entry(input_frame, width=50)
         self.target_entry.grid(row=0, column=1, padx=6, pady=5, sticky="ew")
         self.target_entry.insert(0, self.config.get("target", ""))
 
         # Tags
-        ttk.Label(input_frame, text="Tags:", font=("TkDefaultFont", 10, "bold")).grid(row=1, column=0, sticky="w", padx=6, pady=5)
+        ttk.Label(input_frame, text="Tags:", style="Field.TLabel").grid(row=1, column=0, sticky="w", padx=6, pady=5)
         self.tags_entry = ttk.Entry(input_frame, width=50)
         self.tags_entry.grid(row=1, column=1, padx=6, pady=5, sticky="ew")
         self.tags_entry.insert(0, self.config.get("tags", ""))
 
         # Output path with browse
-        ttk.Label(input_frame, text="Pasta de saída:", font=("TkDefaultFont", 10, "bold")).grid(row=2, column=0, sticky="w", padx=6, pady=5)
-        output_frame = ttk.Frame(input_frame)
+        ttk.Label(input_frame, text="Pasta de saída:", style="Field.TLabel").grid(row=2, column=0, sticky="w", padx=6, pady=5)
+        output_frame = ttk.Frame(input_frame, style="Panel.TFrame")
         output_frame.grid(row=2, column=1, padx=6, pady=5, sticky="ew")
         output_frame.columnconfigure(0, weight=1)
         self.output_entry = ttk.Entry(output_frame)
@@ -306,40 +359,40 @@ class TelegramDownloaderGUI(ttk.Window):
         ttk.Button(output_frame, text="Procurar", command=self._browse_output, bootstyle="secondary").grid(row=0, column=1)
 
         # Limit
-        ttk.Label(input_frame, text="Limite por tag:", font=("TkDefaultFont", 10, "bold")).grid(row=3, column=0, sticky="w", padx=6, pady=5)
+        ttk.Label(input_frame, text="Limite por tag:", style="Field.TLabel").grid(row=3, column=0, sticky="w", padx=6, pady=5)
         self.limit_entry = ttk.Entry(input_frame, width=20)
         self.limit_entry.grid(row=3, column=1, padx=6, pady=5, sticky="w")
         self.limit_entry.insert(0, str(self.config.get("limit", "0")))
 
         # Session name
-        ttk.Label(input_frame, text="Nome da sessão:", font=("TkDefaultFont", 10, "bold")).grid(row=4, column=0, sticky="w", padx=6, pady=5)
+        ttk.Label(input_frame, text="Nome da sessão:", style="Field.TLabel").grid(row=4, column=0, sticky="w", padx=6, pady=5)
         self.session_entry = ttk.Entry(input_frame, width=20)
         self.session_entry.grid(row=4, column=1, padx=6, pady=5, sticky="w")
         self.session_entry.insert(0, self.config.get("session_name", self.config.get("session", "session")))
 
         # Name line
-        ttk.Label(input_frame, text="Linha do nome do vídeo:", font=("TkDefaultFont", 10, "bold")).grid(row=5, column=0, sticky="w", padx=6, pady=5)
+        ttk.Label(input_frame, text="Linha do nome do vídeo:", style="Field.TLabel").grid(row=5, column=0, sticky="w", padx=6, pady=5)
         self.name_line_var = ttk.StringVar(value=self.config.get("name_line", "última"))
-        name_line_frame = ttk.Frame(input_frame)
+        name_line_frame = ttk.Frame(input_frame, style="Panel.TFrame")
         name_line_frame.grid(row=5, column=1, sticky="w", padx=6, pady=5)
         for opt in ["primeira", "segunda", "terceira", "última"]:
             rb = ttk.Radiobutton(name_line_frame, text=opt.capitalize(), variable=self.name_line_var, value=opt)
             rb.pack(side="left", padx=(0, 10))
 
         # Max flood wait
-        ttk.Label(input_frame, text="Max Flood Wait (s):", font=("TkDefaultFont", 10, "bold")).grid(row=6, column=0, sticky="w", padx=6, pady=5)
+        ttk.Label(input_frame, text="Max Flood Wait (s):", style="Field.TLabel").grid(row=6, column=0, sticky="w", padx=6, pady=5)
         self.max_flood_entry = ttk.Entry(input_frame, width=20)
         self.max_flood_entry.grid(row=6, column=1, padx=6, pady=5, sticky="w")
         self.max_flood_entry.insert(0, str(self.config.get("max_flood_wait", "60")))
 
         # Config buttons
-        cfg_btn_frame = ttk.Frame(main_frame)
+        cfg_btn_frame = ttk.Frame(main_frame, style="App.TFrame")
         cfg_btn_frame.pack(fill="x", pady=(0, 15))
         ttk.Button(cfg_btn_frame, text="💾 Salvar Configuração", command=self._save_ui_config, bootstyle="success").pack(side="left", padx=6, fill="x", expand=True)
         ttk.Button(cfg_btn_frame, text="📂 Carregar Configuração", command=self._load_config_file, bootstyle="warning").pack(side="left", padx=6, fill="x", expand=True)
 
         # Action buttons
-        btn_frame = ttk.Frame(main_frame)
+        btn_frame = ttk.Frame(main_frame, style="App.TFrame")
         btn_frame.pack(fill="x", pady=(0, 15))
         self.download_btn = ttk.Button(btn_frame, text="▶ Iniciar Download", command=self._start_download, bootstyle="success")
         self.download_btn.pack(side="left", fill="x", expand=True, padx=(0, 6))
@@ -347,25 +400,25 @@ class TelegramDownloaderGUI(ttk.Window):
         self.stop_btn.pack(side="left", fill="x", expand=True, padx=(6, 0))
 
         # Progress frame
-        prog_frame = ttk.Labelframe(main_frame, text="Progresso", padding=10)
+        prog_frame = ttk.Labelframe(main_frame, text="Progresso", style="Section.TLabelframe")
         prog_frame.pack(fill="x", pady=(0, 15))
-        self.current_file_label = ttk.Label(prog_frame, text="Nenhum arquivo em andamento", font=("TkDefaultFont", 10, "italic"))
+        self.current_file_label = ttk.Label(prog_frame, text="Nenhum arquivo em andamento", style="Subtitle.TLabel")
         self.current_file_label.pack(fill="x", padx=6, pady=(0, 4))
-        self.progress_bar = ttk.Progressbar(prog_frame, mode='determinate')
+        self.progress_bar = ttk.Progressbar(prog_frame, mode='determinate', bootstyle="success-striped")
         self.progress_bar.pack(fill="x", padx=6, pady=4)
-        self.progress_label = ttk.Label(prog_frame, text="Aguardando...", font=("TkDefaultFont", 10))
+        self.progress_label = ttk.Label(prog_frame, text="Aguardando...", style="App.TLabel")
         self.progress_label.pack(anchor="w", padx=6, pady=(0, 6))
 
         # Log area (collapsible)
-        log_frame = ttk.Labelframe(main_frame, text="Log", padding=10)
+        log_frame = ttk.Labelframe(main_frame, text="Log", style="Log.TLabelframe")
         log_frame.pack(fill="both", expand=True, padx=8, pady=6)
-        log_header = ttk.Frame(log_frame)
+        log_header = ttk.Frame(log_frame, style="Panel.TFrame")
         log_header.pack(fill="x", padx=6)
         self.log_visible = ttk.BooleanVar(value=False)
         self.toggle_log_btn = ttk.Button(log_header, text="📋 Mostrar Log ▼", command=self._toggle_log, bootstyle="secondary")
         self.toggle_log_btn.pack(side="left", padx=6)
-        self.log_content_frame = ttk.Frame(log_frame)
-        self.log_text = ttk.Text(self.log_content_frame, wrap="word", font=("Courier", 10), height=8)
+        self.log_content_frame = ttk.Frame(log_frame, style="Panel.TFrame")
+        self.log_text = ttk.Text(self.log_content_frame, wrap="word", font=self.font_mono, height=8, background="#0F141A", foreground="#E6EDF5", insertbackground="#E6EDF5")
         scrollbar = ttk.Scrollbar(self.log_content_frame, orient="vertical", command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=scrollbar.set)
         self.log_text.pack(side="left", fill="both", expand=True, padx=(0, 8), pady=8)
@@ -402,7 +455,16 @@ class TelegramDownloaderGUI(ttk.Window):
     def _log(self, msg: str):
         ts = datetime.now().strftime("%H:%M:%S")
         line = f"[{ts}] {msg}"
+        if threading.current_thread() is threading.main_thread():
+            self._append_log_line(line)
+        else:
+            self.after(0, self._append_log_line, line)
+
+    def _append_log_line(self, line: str):
         try:
+            if not hasattr(self, "log_text"):
+                print(line)
+                return
             self.log_text.configure(state="normal")
             self.log_text.insert("end", line + "\n")
             self.log_text.see("end")
@@ -531,12 +593,23 @@ class TelegramDownloaderGUI(ttk.Window):
     def _stop_download(self):
         self.downloading = False
         self._log("⏹ Parando download...")
+        if self.client and self._download_loop:
+            def _disconnect():
+                try:
+                    asyncio.create_task(self.client.disconnect())
+                except Exception:
+                    pass
+            try:
+                self._download_loop.call_soon_threadsafe(_disconnect)
+            except Exception:
+                pass
         self.download_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
         self.update_idletasks()
 
     # ---------- Core download logic (async) ----------
     async def _download_videos_async(self):
+        self._download_loop = asyncio.get_running_loop()
         cfg = load_config() or self.config or {}
         if not cfg.get("api_id") or not cfg.get("api_hash"):
             msg_err = "api_id/api_hash não encontrados no config.json.\nFaça login novamente."
@@ -572,6 +645,7 @@ class TelegramDownloaderGUI(ttk.Window):
             return
 
         client = TelegramClient(os.path.join(BASE_DIR, session_name), api_id, api_hash)
+        self.client = client
         try:
             await client.start()
             me = await client.get_me()
@@ -619,7 +693,7 @@ class TelegramDownloaderGUI(ttk.Window):
             seen_msg_ids = set()
             while self.downloading:
                 try:
-                    async for msg in client.iter_messages(entity, search=tag, limit=(limit or None)):
+                    async for msg in client.iter_messages(entity, search=tag):
                         if not self.downloading:
                             break
 
@@ -718,6 +792,9 @@ class TelegramDownloaderGUI(ttk.Window):
                             except Exception:
                                 pass
                             continue
+                        
+                        if limit and count_tag >= limit:
+                            break
 
                     break  # finished iter_messages
                 except FloodWaitError as e:
@@ -740,6 +817,8 @@ class TelegramDownloaderGUI(ttk.Window):
             await client.disconnect()
         except Exception:
             pass
+        self.client = None
+        self._download_loop = None
 
         # save CSV in output and backup in src/
         if registros:
@@ -753,7 +832,7 @@ class TelegramDownloaderGUI(ttk.Window):
                 self._log(f"❌ Erro ao salvar CSV: {e}")
 
         self._log(f"\n🚀 Finalizado: {total_baixados} vídeos baixados ({total_encontrados} mensagens verificadas). Erros: {total_erros}")
-        self.after(0, lambda: self.progress_bar.config(value=1))
+        self.after(0, lambda: self.progress_bar.config(value=100))
         self.after(0, lambda: self.progress_label.configure(text="Concluído!"))
         
         # Notification
@@ -775,11 +854,14 @@ class TelegramDownloaderGUI(ttk.Window):
         try:
             progress = float(current) / float(total) if total else 0.0
             current_time = time.time()
+            if current < total and (current_time - self.last_ui_update_time) < 0.2:
+                return
             time_diff = current_time - self.last_progress_time
             bytes_diff = current - self.last_progress_bytes
             speed_mb = (bytes_diff / time_diff / (1024 * 1024)) if time_diff > 0 else 0.0
             self.last_progress_time = current_time
             self.last_progress_bytes = current
+            self.last_ui_update_time = current_time
             current_mb = current / (1024 * 1024)
             total_mb = total / (1024 * 1024)
             if speed_mb > 0 and current > 0:
