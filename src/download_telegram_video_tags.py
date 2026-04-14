@@ -26,7 +26,16 @@ CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
 # --- CTk appearance ---
 ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
+
+VESPER_COLORS = {
+    "bg": "#101010",
+    "panel": "#161616",
+    "text": "#FFFFFF",
+    "muted": "#A0A0A0",
+    "accent": "#FFC799",
+    "success": "#90B99F",
+    "danger": "#F5A191",
+}
 
 
 # --- Utils ---
@@ -78,6 +87,7 @@ def delete_session_file(session_name: str):
 class TelegramDownloaderApp(ctk.CTk):
     def __init__(self):
         super().__init__()
+        self.configure(fg_color=VESPER_COLORS["bg"])
         self.title("Telegram Video Downloader")
         self.geometry("900x800")
         self.resizable(True, True)
@@ -102,42 +112,96 @@ class TelegramDownloaderApp(ctk.CTk):
     # ---------- LOGIN UI & FLOW ----------
     def _build_login_interface(self):
         self._clear()
-        frame = ctk.CTkFrame(self)
+        frame = ctk.CTkFrame(self, fg_color=VESPER_COLORS["panel"])
         frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        ctk.CTkLabel(frame, text="Configuração do Telegram", font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(6, 12))
+        ctk.CTkLabel(
+            frame, 
+            text="// Telegram Video Downloader", 
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=VESPER_COLORS["accent"]
+        ).pack(pady=(6, 12))
+
+        ctk.CTkLabel(
+            frame, 
+            text="// Conecte sua conta para iniciar os downloads.", 
+            text_color=VESPER_COLORS["muted"]
+        ).pack(pady=(0, 12))
 
         # API ID
-        ctk.CTkLabel(frame, text="API ID:").pack(anchor="w", padx=6)
-        self.login_api_id = ctk.CTkEntry(frame)
+        ctk.CTkLabel(
+            frame, 
+            text="// API ID:", 
+            text_color=VESPER_COLORS["muted"],
+            font=ctk.CTkFont(weight="bold")
+        ).pack(anchor="w", padx=6)
+        self.login_api_id = ctk.CTkEntry(
+            frame, 
+            fg_color=VESPER_COLORS["bg"],
+            text_color=VESPER_COLORS["text"],
+            border_color=VESPER_COLORS["border"] if hasattr(VESPER_COLORS, "border") else VESPER_COLORS["muted"]
+        )
         self.login_api_id.pack(fill="x", padx=6, pady=(0, 8))
         if self.config.get("api_id"):
             self.login_api_id.insert(0, str(self.config.get("api_id")))
 
         # API Hash
-        ctk.CTkLabel(frame, text="API Hash:").pack(anchor="w", padx=6)
-        self.login_api_hash = ctk.CTkEntry(frame, show="*")
+        ctk.CTkLabel(
+            frame, 
+            text="// API Hash:", 
+            text_color=VESPER_COLORS["muted"],
+            font=ctk.CTkFont(weight="bold")
+        ).pack(anchor="w", padx=6)
+        self.login_api_hash = ctk.CTkEntry(
+            frame, 
+            show="*",
+            fg_color=VESPER_COLORS["bg"],
+            text_color=VESPER_COLORS["text"],
+            border_color=VESPER_COLORS["muted"]
+        )
         self.login_api_hash.pack(fill="x", padx=6, pady=(0, 8))
         if self.config.get("api_hash"):
             self.login_api_hash.insert(0, self.config.get("api_hash"))
 
         # Phone
-        ctk.CTkLabel(frame, text="Telefone (ex: +55XXXXXXXXXXX):").pack(anchor="w", padx=6)
-        self.login_phone = ctk.CTkEntry(frame)
+        ctk.CTkLabel(
+            frame, 
+            text="// Telefone (ex: +55XXXXXXXXXXX):", 
+            text_color=VESPER_COLORS["muted"],
+            font=ctk.CTkFont(weight="bold")
+        ).pack(anchor="w", padx=6)
+        self.login_phone = ctk.CTkEntry(
+            frame,
+            fg_color=VESPER_COLORS["bg"],
+            text_color=VESPER_COLORS["text"],
+            border_color=VESPER_COLORS["muted"]
+        )
         self.login_phone.pack(fill="x", padx=6, pady=(0, 8))
         if self.config.get("phone"):
             self.login_phone.insert(0, self.config.get("phone"))
 
         # status
-        self.login_status = ctk.CTkLabel(frame, text="")
+        self.login_status = ctk.CTkLabel(frame, text="", text_color=VESPER_COLORS["muted"])
         self.login_status.pack(pady=(6, 0))
 
         # buttons
-        btn_frame = ctk.CTkFrame(frame)
+        btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
         btn_frame.pack(fill="x", padx=6, pady=12)
 
-        ctk.CTkButton(btn_frame, text="Conectar e enviar código", command=self._start_login_thread).pack(side="left", expand=True, padx=6)
-        ctk.CTkButton(btn_frame, text="Sair", fg_color="red", hover_color="#a30000", command=self.destroy).pack(side="left", padx=6)
+        ctk.CTkButton(
+            btn_frame, 
+            text="[CONECTAR E ENVIAR CÓDIGO]", 
+            fg_color=VESPER_COLORS["success"],
+            text_color=VESPER_COLORS["bg"],
+            command=self._start_login_thread
+        ).pack(side="left", expand=True, padx=6)
+        ctk.CTkButton(
+            btn_frame, 
+            text="[SAIR]", 
+            fg_color=VESPER_COLORS["danger"],
+            text_color=VESPER_COLORS["bg"],
+            command=self.destroy
+        ).pack(side="left", padx=6)
 
     def _start_login_thread(self):
         # ensure entries updated (fix for Wayland/Hyprland)
@@ -287,119 +351,281 @@ class TelegramDownloaderApp(ctk.CTk):
         self.config = load_config() or self.config or {}
 
         # main scrollable frame
-        main_frame = ctk.CTkScrollableFrame(self)
+        main_frame = ctk.CTkScrollableFrame(
+            self, 
+            fg_color=VESPER_COLORS["bg"]
+        )
         main_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
         # title
-        ctk.CTkLabel(main_frame, text="Telegram Video Downloader", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(10, 20))
+        ctk.CTkLabel(
+            main_frame, 
+            text="// Telegram Video Downloader", 
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=VESPER_COLORS["accent"]
+        ).pack(pady=(10, 20))
+
+        ctk.CTkLabel(
+            main_frame, 
+            text="// Baixe vídeos por tags com controle total e histórico em CSV.", 
+            text_color=VESPER_COLORS["muted"]
+        ).pack(pady=(0, 20))
 
         # inputs frame (grid)
-        input_frame = ctk.CTkFrame(main_frame)
+        input_frame = ctk.CTkFrame(main_frame, fg_color=VESPER_COLORS["panel"])
         input_frame.pack(fill="x", padx=10, pady=5)
         input_frame.columnconfigure(1, weight=1)
 
         # NOTE: no API ID / API HASH / PHONE fields here (they're in config.json handled by login)
 
         # Target
-        ctk.CTkLabel(input_frame, text="Canal/Grupo:", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", padx=10, pady=5)
-        self.target_entry = ctk.CTkEntry(input_frame, width=400, placeholder_text="@nome ou https://t.me/nome")
+        ctk.CTkLabel(
+            input_frame, 
+            text="// Canal/Grupo:", 
+            font=ctk.CTkFont(weight="bold"),
+            text_color=VESPER_COLORS["muted"]
+        ).grid(row=0, column=0, sticky="w", padx=10, pady=5)
+        self.target_entry = ctk.CTkEntry(
+            input_frame, 
+            width=400, 
+            placeholder_text="@nome ou https://t.me/nome",
+            fg_color=VESPER_COLORS["bg"],
+            text_color=VESPER_COLORS["text"],
+            border_color=VESPER_COLORS["muted"]
+        )
         self.target_entry.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
         if self.config.get("target"):
             self.target_entry.insert(0, self.config.get("target"))
 
         # Tags
-        ctk.CTkLabel(input_frame, text="Tags:", font=ctk.CTkFont(weight="bold")).grid(row=1, column=0, sticky="w", padx=10, pady=5)
-        self.tags_entry = ctk.CTkEntry(input_frame, width=400, placeholder_text="#tag1,#tag2,#tag3")
+        ctk.CTkLabel(
+            input_frame, 
+            text="// Tags:", 
+            font=ctk.CTkFont(weight="bold"),
+            text_color=VESPER_COLORS["muted"]
+        ).grid(row=1, column=0, sticky="w", padx=10, pady=5)
+        self.tags_entry = ctk.CTkEntry(
+            input_frame, 
+            width=400, 
+            placeholder_text="#tag1,#tag2,#tag3",
+            fg_color=VESPER_COLORS["bg"],
+            text_color=VESPER_COLORS["text"],
+            border_color=VESPER_COLORS["muted"]
+        )
         self.tags_entry.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
         if self.config.get("tags"):
             self.tags_entry.insert(0, self.config.get("tags"))
 
         # Output path with browse
-        ctk.CTkLabel(input_frame, text="Pasta de saída:", font=ctk.CTkFont(weight="bold")).grid(row=2, column=0, sticky="w", padx=10, pady=5)
+        ctk.CTkLabel(
+            input_frame, 
+            text="// Pasta de saída:", 
+            font=ctk.CTkFont(weight="bold"),
+            text_color=VESPER_COLORS["muted"]
+        ).grid(row=2, column=0, sticky="w", padx=10, pady=5)
         output_frame = ctk.CTkFrame(input_frame, fg_color="transparent")
         output_frame.grid(row=2, column=1, sticky="ew", padx=10, pady=5)
         output_frame.columnconfigure(0, weight=1)
 
-        self.output_entry = ctk.CTkEntry(output_frame, placeholder_text="./downloads")
+        self.output_entry = ctk.CTkEntry(
+            output_frame, 
+            placeholder_text="./downloads",
+            fg_color=VESPER_COLORS["bg"],
+            text_color=VESPER_COLORS["text"],
+            border_color=VESPER_COLORS["muted"]
+        )
         self.output_entry.insert(0, self.config.get("output_path", "./downloads"))
         self.output_entry.grid(row=0, column=0, sticky="ew", padx=(0, 5))
 
-        ctk.CTkButton(output_frame, text="Procurar", width=100, command=self._browse_folder).grid(row=0, column=1)
+        ctk.CTkButton(
+            output_frame, 
+            text="[PROCURAR]", 
+            width=100, 
+            fg_color=VESPER_COLORS["muted"],
+            text_color=VESPER_COLORS["bg"],
+            command=self._browse_folder
+        ).grid(row=0, column=1)
 
         # Limit
-        ctk.CTkLabel(input_frame, text="Limite por tag:", font=ctk.CTkFont(weight="bold")).grid(row=3, column=0, sticky="w", padx=10, pady=5)
-        self.limit_entry = ctk.CTkEntry(input_frame, width=200)
+        ctk.CTkLabel(
+            input_frame, 
+            text="// Limite por tag:", 
+            font=ctk.CTkFont(weight="bold"),
+            text_color=VESPER_COLORS["muted"]
+        ).grid(row=3, column=0, sticky="w", padx=10, pady=5)
+        self.limit_entry = ctk.CTkEntry(
+            input_frame, 
+            width=200,
+            fg_color=VESPER_COLORS["bg"],
+            text_color=VESPER_COLORS["text"],
+            border_color=VESPER_COLORS["muted"]
+        )
         self.limit_entry.grid(row=3, column=1, padx=10, pady=5, sticky="w")
         self.limit_entry.insert(0, str(self.config.get("limit", "0")))
 
         # Session name (editable, pre-filled from config)
-        ctk.CTkLabel(input_frame, text="Nome da sessão:", font=ctk.CTkFont(weight="bold")).grid(row=4, column=0, sticky="w", padx=10, pady=5)
-        self.session_entry = ctk.CTkEntry(input_frame, width=200)
+        ctk.CTkLabel(
+            input_frame, 
+            text="// Nome da sessão:", 
+            font=ctk.CTkFont(weight="bold"),
+            text_color=VESPER_COLORS["muted"]
+        ).grid(row=4, column=0, sticky="w", padx=10, pady=5)
+        self.session_entry = ctk.CTkEntry(
+            input_frame, 
+            width=200,
+            fg_color=VESPER_COLORS["bg"],
+            text_color=VESPER_COLORS["text"],
+            border_color=VESPER_COLORS["muted"]
+        )
         self.session_entry.grid(row=4, column=1, padx=10, pady=5, sticky="w")
         self.session_entry.insert(0, self.config.get("session_name", self.config.get("session", "session")))
 
         # Name line radio
-        ctk.CTkLabel(input_frame, text="Linha do nome do vídeo:", font=ctk.CTkFont(weight="bold")).grid(row=5, column=0, sticky="w", padx=10, pady=5)
+        ctk.CTkLabel(
+            input_frame, 
+            text="// Linha do nome do vídeo:", 
+            font=ctk.CTkFont(weight="bold"),
+            text_color=VESPER_COLORS["muted"]
+        ).grid(row=5, column=0, sticky="w", padx=10, pady=5)
         self.name_line_var = ctk.StringVar(value=self.config.get("name_line", "última"))
         name_line_frame = ctk.CTkFrame(input_frame, fg_color="transparent")
         name_line_frame.grid(row=5, column=1, padx=10, pady=5, sticky="w")
         options = ["primeira", "segunda", "terceira", "última"]
         for option in options:
-            rb = ctk.CTkRadioButton(name_line_frame, text=option.capitalize(), variable=self.name_line_var, value=option)
+            rb = ctk.CTkRadioButton(
+                name_line_frame, 
+                text=option.capitalize(), 
+                variable=self.name_line_var, 
+                value=option,
+                text_color=VESPER_COLORS["text"]
+            )
             rb.pack(side="left", padx=5)
 
         # Max flood wait
-        ctk.CTkLabel(input_frame, text="Max Flood Wait (s):", font=ctk.CTkFont(weight="bold")).grid(row=6, column=0, sticky="w", padx=10, pady=5)
-        self.max_flood_entry = ctk.CTkEntry(input_frame, width=200)
+        ctk.CTkLabel(
+            input_frame, 
+            text="// Max Flood Wait (s):", 
+            font=ctk.CTkFont(weight="bold"),
+            text_color=VESPER_COLORS["muted"]
+        ).grid(row=6, column=0, sticky="w", padx=10, pady=5)
+        self.max_flood_entry = ctk.CTkEntry(
+            input_frame, 
+            width=200,
+            fg_color=VESPER_COLORS["bg"],
+            text_color=VESPER_COLORS["text"],
+            border_color=VESPER_COLORS["muted"]
+        )
         self.max_flood_entry.grid(row=6, column=1, padx=10, pady=5, sticky="w")
         self.max_flood_entry.insert(0, str(self.config.get("max_flood_wait", "300")))
 
         # Config save/load buttons
-        config_btn_frame = ctk.CTkFrame(main_frame)
+        config_btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         config_btn_frame.pack(fill="x", padx=10, pady=5)
 
-        ctk.CTkButton(config_btn_frame, text="💾 Salvar Configuração", command=self._save_current_config, fg_color="green").pack(side="left", padx=5, fill="x", expand=True)
-        ctk.CTkButton(config_btn_frame, text="📂 Carregar Configuração", command=self._load_config_file, fg_color="orange").pack(side="left", padx=5, fill="x", expand=True)
+        ctk.CTkButton(
+            config_btn_frame, 
+            text="[SALVAR CONFIGURAÇÃO]", 
+            command=self._save_current_config, 
+            fg_color=VESPER_COLORS["success"],
+            text_color=VESPER_COLORS["bg"]
+        ).pack(side="left", padx=5, fill="x", expand=True)
+        ctk.CTkButton(
+            config_btn_frame, 
+            text="[CARREGAR CONFIGURAÇÃO]", 
+            command=self._load_config_file, 
+            fg_color=VESPER_COLORS["muted"],
+            text_color=VESPER_COLORS["bg"]
+        ).pack(side="left", padx=5, fill="x", expand=True)
 
         # Download control buttons
-        btn_frame = ctk.CTkFrame(main_frame)
+        btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         btn_frame.pack(fill="x", padx=10, pady=10)
 
-        self.download_btn = ctk.CTkButton(btn_frame, text="▶ Iniciar Download", font=ctk.CTkFont(size=16, weight="bold"), height=40, command=self._start_download)
+        self.download_btn = ctk.CTkButton(
+            btn_frame, 
+            text="[INICIAR DOWNLOAD]", 
+            font=ctk.CTkFont(size=14, weight="bold"), 
+            height=40, 
+            fg_color=VESPER_COLORS["success"],
+            text_color=VESPER_COLORS["bg"],
+            command=self._start_download
+        )
         self.download_btn.pack(side="left", padx=5, fill="x", expand=True)
 
-        self.stop_btn = ctk.CTkButton(btn_frame, text="⏹ Parar", font=ctk.CTkFont(size=16, weight="bold"), height=40, fg_color="red", hover_color="darkred", command=self._stop_download, state="disabled")
+        self.stop_btn = ctk.CTkButton(
+            btn_frame, 
+            text="[PARAR DOWNLOAD]", 
+            font=ctk.CTkFont(size=14, weight="bold"), 
+            height=40, 
+            fg_color=VESPER_COLORS["danger"],
+            text_color=VESPER_COLORS["bg"],
+            command=self._stop_download, 
+            state="disabled"
+        )
         self.stop_btn.pack(side="left", padx=5, fill="x", expand=True)
 
         # progress section
-        progress_frame = ctk.CTkFrame(main_frame)
+        progress_frame = ctk.CTkFrame(main_frame, fg_color=VESPER_COLORS["panel"])
         progress_frame.pack(fill="x", padx=10, pady=5)
 
-        ctk.CTkLabel(progress_frame, text="Progresso:", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=10, pady=(5, 0))
+        ctk.CTkLabel(
+            progress_frame, 
+            text="// Progresso:", 
+            font=ctk.CTkFont(weight="bold"),
+            text_color=VESPER_COLORS["accent"]
+        ).pack(anchor="w", padx=10, pady=(5, 0))
 
-        self.current_file_label = ctk.CTkLabel(progress_frame, text="Nenhum arquivo em andamento", font=ctk.CTkFont(size=11, slant="italic"), anchor="w")
+        self.current_file_label = ctk.CTkLabel(
+            progress_frame, 
+            text="// Nenhum arquivo em andamento", 
+            font=ctk.CTkFont(size=11, slant="italic"), 
+            anchor="w",
+            text_color=VESPER_COLORS["muted"]
+        )
         self.current_file_label.pack(fill="x", padx=10, pady=(0, 5))
 
-        self.progress_bar = ctk.CTkProgressBar(progress_frame)
+        self.progress_bar = ctk.CTkProgressBar(progress_frame, progress_color=VESPER_COLORS["accent"])
         self.progress_bar.pack(fill="x", padx=10, pady=5)
         self.progress_bar.set(0)
 
-        self.progress_label = ctk.CTkLabel(progress_frame, text="Aguardando...", font=ctk.CTkFont(size=12))
+        self.progress_label = ctk.CTkLabel(
+            progress_frame, 
+            text="// Aguardando...", 
+            font=ctk.CTkFont(size=12),
+            text_color=VESPER_COLORS["text"]
+        )
         self.progress_label.pack(anchor="w", padx=10, pady=(0, 5))
 
         # log area (collapsible)
-        log_frame = ctk.CTkFrame(main_frame)
+        log_frame = ctk.CTkFrame(main_frame, fg_color=VESPER_COLORS["panel"])
         log_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         log_header = ctk.CTkFrame(log_frame, fg_color="transparent")
         log_header.pack(fill="x", padx=5, pady=0)
 
         self.log_visible = ctk.BooleanVar(value=False)
-        self.toggle_log_btn = ctk.CTkButton(log_header, text="📋 Mostrar Log ▼", command=self._toggle_log_visibility, width=150, height=28, font=ctk.CTkFont(weight="bold", size=12), fg_color="transparent", hover_color=("gray80","gray30"), border_width=1)
+        self.toggle_log_btn = ctk.CTkButton(
+            log_header, 
+            text="[MOSTRAR LOG]", 
+            command=self._toggle_log_visibility, 
+            width=150, 
+            height=28, 
+            font=ctk.CTkFont(weight="bold", size=12), 
+            fg_color=VESPER_COLORS["muted"],
+            text_color=VESPER_COLORS["bg"],
+            hover_color=VESPER_COLORS["accent"]
+        )
         self.toggle_log_btn.pack(side="left", padx=5, pady=2)
 
         self.log_content_frame = ctk.CTkFrame(log_frame, fg_color="transparent")
-        self.log_text = ctk.CTkTextbox(self.log_content_frame, wrap="word", font=ctk.CTkFont(family="Courier", size=11))
+        self.log_text = ctk.CTkTextbox(
+            self.log_content_frame, 
+            wrap="word", 
+            font=ctk.CTkFont(family="JetBrains Mono", size=11),
+            fg_color=VESPER_COLORS["bg"],
+            text_color=VESPER_COLORS["text"],
+            border_color=VESPER_COLORS["muted"]
+        )
         self.log_text.pack(fill="both", expand=True, padx=10, pady=5)
         # start hidden
         self.log_content_frame.pack_forget()
@@ -421,11 +647,11 @@ class TelegramDownloaderApp(ctk.CTk):
     def _toggle_log_visibility(self):
         if self.log_visible.get():
             self.log_content_frame.pack_forget()
-            self.toggle_log_btn.configure(text="📋 Mostrar Log ▼")
+            self.toggle_log_btn.configure(text="[MOSTRAR LOG]")
             self.log_visible.set(False)
         else:
             self.log_content_frame.pack(fill="both", expand=True, padx=0, pady=0)
-            self.toggle_log_btn.configure(text="📋 Ocultar Log ▲")
+            self.toggle_log_btn.configure(text="[OCULTAR LOG]")
             self.log_visible.set(True)
         self.update_idletasks()
 

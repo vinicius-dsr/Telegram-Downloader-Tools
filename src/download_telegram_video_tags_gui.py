@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-import tcl_fix
-import os
-import json
-import time
 import asyncio
+import json
+import os
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, List
+from tkinter import filedialog, messagebox
+from typing import Dict, List, Optional
 
 import pandas as pd
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
-from tkinter import messagebox, filedialog
 from plyer import notification
-
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError, SessionPasswordNeededError
+from ttkbootstrap.constants import *
+
+import tcl_fix
 
 # --- Paths: garantir que config/session fiquem em src/ (diretório do script) ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # deve ser src/
@@ -91,7 +91,9 @@ class TelegramDownloaderGUI(ttk.Window):
         self._download_loop: Optional[asyncio.AbstractEventLoop] = None
 
         # Build initial UI depending on config/session
-        if self.config and self._session_exists(self.config.get("session_name", "session")):
+        if self.config and self._session_exists(
+            self.config.get("session_name", "session")
+        ):
             # show main UI directly
             self._build_main_interface()
         else:
@@ -100,37 +102,85 @@ class TelegramDownloaderGUI(ttk.Window):
 
     def _setup_theme(self):
         style = ttk.Style()
-        self.font_title = ("Segoe UI Semilight", 24)
-        self.font_subtitle = ("Segoe UI", 11)
-        self.font_label = ("Segoe UI Semibold", 10)
-        self.font_body = ("Segoe UI", 10)
+        self.font_title = ("JetBrains Mono", 24, "bold")
+        self.font_subtitle = ("JetBrains Mono", 11)
+        self.font_label = ("JetBrains Mono", 10, "bold")
+        self.font_body = ("JetBrains Mono", 10)
         self.font_mono = ("JetBrains Mono", 10)
-        self.color_bg = "#0A0E1A"
-        self.color_panel = "#0F1419"
-        self.color_panel_alt = "#131821"
-        self.color_accent = "#0084FF"
+        self.color_bg = "#101010"
+        self.color_panel = "#101010"
+        self.color_panel_alt = "#161616"
+        self.color_accent = "#FFC799"
         self.color_text = "#FFFFFF"
-        self.color_muted = "#8B949E"
-        self.color_border = "#30363D"
-        self.color_success = "#2EA043"
-        self.color_danger = "#DC3545"
+        self.color_muted = "#A0A0A0"
+        self.color_border = "#101010"
+        self.color_success = "#90B99F"
+        self.color_danger = "#F5A191"
 
         style.configure("App.TFrame", background=self.color_bg)
         style.configure("Panel.TFrame", background=self.color_panel)
         style.configure("PanelAlt.TFrame", background=self.color_panel_alt)
-        style.configure("Title.TLabel", font=self.font_title, foreground=self.color_text)
-        style.configure("Subtitle.TLabel", font=self.font_subtitle, foreground=self.color_muted)
-        style.configure("Field.TLabel", font=self.font_label, foreground=self.color_text)
+        style.configure(
+            "Title.TLabel", font=self.font_title, foreground=self.color_text
+        )
+        style.configure(
+            "Subtitle.TLabel", font=self.font_subtitle, foreground=self.color_muted
+        )
+        style.configure(
+            "Field.TLabel", font=self.font_label, foreground=self.color_muted
+        )
         style.configure("App.TLabel", font=self.font_body, foreground=self.color_text)
+        style.configure(
+            "FieldConsole.TLabel",
+            font=self.font_label,
+            foreground=self.color_muted,
+        )
         style.configure("Header.TFrame", background=self.color_panel_alt)
-        style.configure("Header.TLabel", font=self.font_title, foreground=self.color_text, background=self.color_panel_alt)
-        style.configure("HeaderSub.TLabel", font=self.font_subtitle, foreground=self.color_muted, background=self.color_panel_alt)
-        style.configure("Section.TLabelframe", padding=16, background=self.color_panel, borderwidth=1, relief="solid")
-        style.configure("Section.TLabelframe.Label", font=("Segoe UI Semibold", 11), foreground=self.color_text, background=self.color_panel)
-        style.configure("Log.TLabelframe", padding=12, background=self.color_panel, borderwidth=1, relief="solid")
-        style.configure("Log.TLabelframe.Label", font=("Segoe UI Semibold", 10), foreground=self.color_text, background=self.color_panel)
-        style.configure("TButton", font=("Segoe UI Semibold", 10), padding=(12, 6))
-        style.configure("TEntry", fieldbackground=self.color_panel_alt, borderwidth=1, relief="solid")
+        style.configure(
+            "Header.TLabel",
+            font=self.font_title,
+            foreground=self.color_text,
+            background=self.color_panel_alt,
+        )
+        style.configure(
+            "HeaderSub.TLabel",
+            font=self.font_subtitle,
+            foreground=self.color_muted,
+            background=self.color_panel_alt,
+        )
+        style.configure(
+            "Section.TLabelframe",
+            padding=16,
+            background=self.color_panel,
+            borderwidth=1,
+            relief="solid",
+        )
+        style.configure(
+            "Section.TLabelframe.Label",
+            font=("JetBrains Mono", 11, "bold"),
+            foreground=self.color_accent,
+            background=self.color_panel,
+        )
+        style.configure(
+            "Log.TLabelframe",
+            padding=12,
+            background=self.color_panel,
+            borderwidth=1,
+            relief="solid",
+        )
+        style.configure(
+            "Log.TLabelframe.Label",
+            font=("JetBrains Mono", 10, "bold"),
+            foreground=self.color_accent,
+            background=self.color_panel,
+        )
+        style.configure("TButton", font=("JetBrains Mono", 10, "bold"), padding=(12, 6))
+        style.configure(
+            "TEntry",
+            fieldbackground=self.color_panel_alt,
+            borderwidth=1,
+            relief="solid",
+        )
 
     # ---------- Login UI & Flow ----------
     def _build_login_interface(self):
@@ -139,25 +189,37 @@ class TelegramDownloaderGUI(ttk.Window):
 
         header = ttk.Frame(frame, padding=(20, 16), style="Header.TFrame")
         header.pack(fill="x", pady=(8, 20))
-        ttk.Label(header, text="Telegram Video Downloader", style="Header.TLabel").pack(anchor="w")
-        ttk.Label(header, text="Conecte sua conta para iniciar os downloads.", style="HeaderSub.TLabel").pack(anchor="w", pady=(4, 0))
+        ttk.Label(header, text="// Telegram Video Downloader", style="Header.TLabel").pack(
+            anchor="w"
+        )
+        ttk.Label(
+            header,
+            text="// Conecte sua conta para iniciar os downloads.",
+            style="HeaderSub.TLabel",
+        ).pack(anchor="w", pady=(4, 0))
 
         # API ID
-        ttk.Label(frame, text="API ID:", style="Field.TLabel").pack(anchor="w", pady=(8, 4))
+        ttk.Label(frame, text="// API ID:", style="FieldConsole.TLabel").pack(
+            anchor="w", pady=(8, 4)
+        )
         self.login_api_id = ttk.Entry(frame, width=40)
         self.login_api_id.pack(fill="x", pady=(0, 12))
         if self.config.get("api_id"):
             self.login_api_id.insert(0, str(self.config.get("api_id")))
 
         # API Hash
-        ttk.Label(frame, text="API Hash:", style="Field.TLabel").pack(anchor="w", pady=(8, 4))
+        ttk.Label(frame, text="// API Hash:", style="FieldConsole.TLabel").pack(
+            anchor="w", pady=(8, 4)
+        )
         self.login_api_hash = ttk.Entry(frame, show="*", width=40)
         self.login_api_hash.pack(fill="x", pady=(0, 12))
         if self.config.get("api_hash"):
             self.login_api_hash.insert(0, self.config.get("api_hash"))
 
         # Phone
-        ttk.Label(frame, text="Telefone (ex: +55XXXXXXXXXXX):", style="Field.TLabel").pack(anchor="w", pady=(8, 4))
+        ttk.Label(
+            frame, text="// Telefone (ex: +55XXXXXXXXXXX):", style="FieldConsole.TLabel"
+        ).pack(anchor="w", pady=(8, 4))
         self.login_phone = ttk.Entry(frame, width=25)
         self.login_phone.pack(fill="x", pady=(0, 12))
         if self.config.get("phone"):
@@ -170,17 +232,25 @@ class TelegramDownloaderGUI(ttk.Window):
         # buttons
         btn_frame = ttk.Frame(frame, style="App.TFrame")
         btn_frame.pack(pady=(8, 16), fill="x")
-        ttk.Button(btn_frame, text="Conectar e enviar código", bootstyle="success", command=self._start_login_thread).pack(side="left", expand=True, padx=8)
-        ttk.Button(btn_frame, text="Sair", bootstyle="danger", command=self.destroy).pack(side="left", padx=8)
+        ttk.Button(
+            btn_frame,
+            text="[CONECTAR E ENVIAR CÓDIGO]",
+            bootstyle="success",
+            command=self._start_login_thread,
+        ).pack(side="left", expand=True, padx=8)
+        ttk.Button(
+            btn_frame, text="[SAIR]", bootstyle="danger", command=self.destroy
+        ).pack(side="left", padx=8)
 
     def _start_login_thread(self):
-        # read fields
         api_id = self.login_api_id.get().strip()
         api_hash = self.login_api_hash.get().strip()
         phone = self.login_phone.get().strip()
 
         if not api_id or not api_hash or not phone:
-            messagebox.showwarning("Aviso", "Preencha todos os campos (API ID, API Hash e telefone).")
+            messagebox.showwarning(
+                "Aviso", "Preencha todos os campos (API ID, API Hash e telefone)."
+            )
             return
         try:
             int(api_id)
@@ -188,53 +258,95 @@ class TelegramDownloaderGUI(ttk.Window):
             messagebox.showerror("Erro", "API ID deve ser um número.")
             return
 
+        print(f"[DEBUG] Iniciando login com phone: {phone}")
         self.login_status.configure(text="Conectando...")
-        # run async login flow in background thread
-        threading.Thread(target=lambda: asyncio.run(self._login_flow(api_id, api_hash, phone)), daemon=True).start()
+        self.update_idletasks()
+        
+        threading.Thread(
+            target=lambda: asyncio.run(self._login_flow(api_id, api_hash, phone)),
+            daemon=True,
+        ).start()
 
     async def _login_flow(self, api_id: str, api_hash: str, phone: str):
         session_name = self.config.get("session_name", "session")
-        client = TelegramClient(os.path.join(BASE_DIR, session_name), int(api_id), api_hash)
+        print(f"[DEBUG] Criando TelegramClient para session: {session_name}")
+        client = TelegramClient(
+            os.path.join(BASE_DIR, session_name), int(api_id), api_hash
+        )
         try:
+            print(f"[DEBUG] Conectando ao Telegram...")
             await client.connect()
+            print(f"[DEBUG] Conectado. Verificando autorização...")
         except Exception as e:
-            self.after(0, lambda err=e: self.login_status.configure(text=f"Erro ao conectar: {err}"))
+            print(f"[DEBUG] Erro ao conectar: {e}")
+            self.after(
+                0,
+                lambda err=e: self.login_status.configure(
+                    text=f"Erro ao conectar: {err}"
+                ),
+            )
             return
 
         try:
             if not await client.is_user_authorized():
-                # send code
+                print(f"[DEBUG] Usuário não autorizado. Enviando código para {phone}...")
                 try:
                     await client.send_code_request(phone)
+                    print(f"[DEBUG] Código enviado com sucesso!")
                 except Exception as e:
+                    print(f"[DEBUG] Erro ao enviar código: {e}")
                     await client.disconnect()
-                    self.after(0, lambda err=e: self.login_status.configure(text=f"Erro ao enviar código: {err}"))
+                    self.after(
+                        0,
+                        lambda err=e: self.login_status.configure(
+                            text=f"Erro ao enviar código: {err}"
+                        ),
+                    )
                     return
 
-                code = await self._ask_modal_input_async("Código de verificação", "Digite o código enviado ao Telegram:")
+                code = await self._ask_modal_input_async(
+                    "Código de verificação", "Digite o código enviado ao Telegram:"
+                )
                 if code is None:
                     await client.disconnect()
-                    self.after(0, lambda: self.login_status.configure(text="Login cancelado."))
+                    self.after(
+                        0, lambda: self.login_status.configure(text="Login cancelado.")
+                    )
                     return
 
                 try:
                     await client.sign_in(phone, code)
                 except SessionPasswordNeededError:
                     # ask for 2FA password
-                    pwd = await self._ask_modal_input_async("Senha 2FA", "Digite sua senha (2FA):", hide=True)
+                    pwd = await self._ask_modal_input_async(
+                        "Senha 2FA", "Digite sua senha (2FA):", hide=True
+                    )
                     if pwd is None:
                         await client.disconnect()
-                        self.after(0, lambda: self.login_status.configure(text="2FA cancelada."))
+                        self.after(
+                            0,
+                            lambda: self.login_status.configure(text="2FA cancelada."),
+                        )
                         return
                     try:
                         await client.sign_in(password=pwd)
                     except Exception as e:
                         await client.disconnect()
-                        self.after(0, lambda err=e: self.login_status.configure(text=f"Erro 2FA: {err}"))
+                        self.after(
+                            0,
+                            lambda err=e: self.login_status.configure(
+                                text=f"Erro 2FA: {err}"
+                            ),
+                        )
                         return
                 except Exception as e:
                     await client.disconnect()
-                    self.after(0, lambda err=e: self.login_status.configure(text=f"Erro ao autenticar: {err}"))
+                    self.after(
+                        0,
+                        lambda err=e: self.login_status.configure(
+                            text=f"Erro ao autenticar: {err}"
+                        ),
+                    )
                     return
 
             # success: save config in src/
@@ -262,11 +374,9 @@ class TelegramDownloaderGUI(ttk.Window):
             except Exception:
                 pass
 
-    async def _ask_modal_input_async(self, title: str, prompt: str, hide: bool = False) -> Optional[str]:
-        """
-        Show a simple modal dialog to get input from user and return it.
-        Works by scheduling the dialog in the main thread and awaiting a future.
-        """
+    async def _ask_modal_input_async(
+        self, title: str, prompt: str, hide: bool = False
+    ) -> Optional[str]:
         loop = asyncio.get_event_loop()
         fut = loop.create_future()
 
@@ -274,7 +384,9 @@ class TelegramDownloaderGUI(ttk.Window):
             if fut.done():
                 return
             try:
-                loop.call_soon_threadsafe(lambda: fut.set_result(val) if not fut.done() else None)
+                loop.call_soon_threadsafe(
+                    lambda: fut.set_result(val) if not fut.done() else None
+                )
             except Exception:
                 if not fut.done():
                     fut.set_result(val)
@@ -304,8 +416,12 @@ class TelegramDownloaderGUI(ttk.Window):
 
             btns = ttk.Frame(dlg)
             btns.pack(pady=12)
-            ttk.Button(btns, text="OK", width=12, bootstyle="primary", command=_ok).pack(side="left", padx=8)
-            ttk.Button(btns, text="Cancelar", width=12, bootstyle="secondary", command=_cancel).pack(side="left", padx=8)
+            ttk.Button(
+                btns, text="OK", width=12, bootstyle="primary", command=_ok
+            ).pack(side="left", padx=8)
+            ttk.Button(
+                btns, text="Cancelar", width=12, bootstyle="secondary", command=_cancel
+            ).pack(side="left", padx=8)
 
         self.after(0, show_dialog)
         try:
@@ -329,8 +445,14 @@ class TelegramDownloaderGUI(ttk.Window):
 
         header = ttk.Frame(main_frame, padding=(20, 16), style="Header.TFrame")
         header.pack(fill="x", pady=(8, 20))
-        ttk.Label(header, text="Telegram Video Downloader", style="Header.TLabel").pack(anchor="w")
-        ttk.Label(header, text="Baixe vídeos por tags com controle total e histórico em CSV.", style="HeaderSub.TLabel").pack(anchor="w", pady=(4, 0))
+        ttk.Label(header, text="// Telegram Video Downloader", style="Header.TLabel").pack(
+            anchor="w"
+        )
+        ttk.Label(
+            header,
+            text="// Baixe vídeos por tags com controle total e histórico em CSV.",
+            style="HeaderSub.TLabel",
+        ).pack(anchor="w", pady=(4, 0))
 
         # Create two-column layout for better organization
         config_container = ttk.Frame(main_frame, style="App.TFrame")
@@ -339,106 +461,192 @@ class TelegramDownloaderGUI(ttk.Window):
         config_container.columnconfigure(1, weight=1)
 
         # Left column - Main settings
-        left_frame = ttk.Labelframe(config_container, text="Configurações Principais", style="Section.TLabelframe")
+        left_frame = ttk.Labelframe(
+            config_container,
+            text="// CONFIGURAÇÕES PRINCIPAIS",
+            style="Section.TLabelframe",
+        )
         left_frame.grid(row=0, column=0, padx=(0, 10), pady=0, sticky="nsew")
 
         # Target
-        ttk.Label(left_frame, text="Canal/Grupo:", style="Field.TLabel").grid(row=0, column=0, sticky="w", padx=8, pady=(8, 4))
+        ttk.Label(left_frame, text="// Canal/Grupo:", style="FieldConsole.TLabel").grid(
+            row=0, column=0, sticky="w", padx=8, pady=(8, 4)
+        )
         self.target_entry = ttk.Entry(left_frame, width=35)
         self.target_entry.grid(row=1, column=0, padx=8, pady=(0, 8), sticky="ew")
         self.target_entry.insert(0, self.config.get("target", ""))
 
         # Tags
-        ttk.Label(left_frame, text="Tags:", style="Field.TLabel").grid(row=2, column=0, sticky="w", padx=8, pady=(8, 4))
+        ttk.Label(left_frame, text="// Tags:", style="FieldConsole.TLabel").grid(
+            row=2, column=0, sticky="w", padx=8, pady=(8, 4)
+        )
         self.tags_entry = ttk.Entry(left_frame, width=35)
         self.tags_entry.grid(row=3, column=0, padx=8, pady=(0, 8), sticky="ew")
         self.tags_entry.insert(0, self.config.get("tags", ""))
 
         # Output path with browse
-        ttk.Label(left_frame, text="Pasta de saída:", style="Field.TLabel").grid(row=4, column=0, sticky="w", padx=8, pady=(8, 4))
+        ttk.Label(left_frame, text="// Pasta de saída:", style="FieldConsole.TLabel").grid(
+            row=4, column=0, sticky="w", padx=8, pady=(8, 4)
+        )
         output_frame = ttk.Frame(left_frame, style="Panel.TFrame")
         output_frame.grid(row=5, column=0, padx=8, pady=(0, 8), sticky="ew")
         output_frame.columnconfigure(0, weight=1)
         self.output_entry = ttk.Entry(output_frame)
         self.output_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         self.output_entry.insert(0, self.config.get("output_path", "./downloads"))
-        ttk.Button(output_frame, text="Procurar", command=self._browse_output, bootstyle="secondary").grid(row=0, column=1)
+        ttk.Button(
+            output_frame,
+            text="[PROCURAR]",
+            command=self._browse_output,
+            bootstyle="secondary",
+        ).grid(row=0, column=1)
 
         left_frame.columnconfigure(0, weight=1)
 
         # Right column - Advanced settings
-        right_frame = ttk.Labelframe(config_container, text="Configurações Avançadas", style="Section.TLabelframe")
+        right_frame = ttk.Labelframe(
+            config_container,
+            text="// CONFIGURAÇÕES AVANÇADAS",
+            style="Section.TLabelframe",
+        )
         right_frame.grid(row=0, column=1, padx=(10, 0), pady=0, sticky="nsew")
 
         # Limit
-        ttk.Label(right_frame, text="Limite por tag:", style="Field.TLabel").grid(row=0, column=0, sticky="w", padx=8, pady=(8, 4))
+        ttk.Label(right_frame, text="// Limite por tag:", style="FieldConsole.TLabel").grid(
+            row=0, column=0, sticky="w", padx=8, pady=(8, 4)
+        )
         self.limit_entry = ttk.Entry(right_frame, width=20)
         self.limit_entry.grid(row=1, column=0, padx=8, pady=(0, 8), sticky="w")
         self.limit_entry.insert(0, str(self.config.get("limit", "0")))
 
         # Session name
-        ttk.Label(right_frame, text="Nome da sessão:", style="Field.TLabel").grid(row=2, column=0, sticky="w", padx=8, pady=(8, 4))
+        ttk.Label(right_frame, text="// Nome da sessão:", style="FieldConsole.TLabel").grid(
+            row=2, column=0, sticky="w", padx=8, pady=(8, 4)
+        )
         self.session_entry = ttk.Entry(right_frame, width=20)
         self.session_entry.grid(row=3, column=0, padx=8, pady=(0, 8), sticky="w")
-        self.session_entry.insert(0, self.config.get("session_name", self.config.get("session", "session")))
+        self.session_entry.insert(
+            0, self.config.get("session_name", self.config.get("session", "session"))
+        )
 
         # Max flood wait
-        ttk.Label(right_frame, text="Max Flood Wait (s):", style="Field.TLabel").grid(row=4, column=0, sticky="w", padx=8, pady=(8, 4))
+        ttk.Label(right_frame, text="// Max Flood Wait (s):", style="FieldConsole.TLabel").grid(
+            row=4, column=0, sticky="w", padx=8, pady=(8, 4)
+        )
         self.max_flood_entry = ttk.Entry(right_frame, width=20)
         self.max_flood_entry.grid(row=5, column=0, padx=8, pady=(0, 8), sticky="w")
         self.max_flood_entry.insert(0, str(self.config.get("max_flood_wait", "60")))
 
         # Name line
-        ttk.Label(right_frame, text="Linha do nome do vídeo:", style="Field.TLabel").grid(row=6, column=0, sticky="w", padx=8, pady=(8, 4))
+        ttk.Label(
+            right_frame, text="// Linha do nome do vídeo:", style="FieldConsole.TLabel"
+        ).grid(row=6, column=0, sticky="w", padx=8, pady=(8, 4))
         self.name_line_var = ttk.StringVar(value=self.config.get("name_line", "última"))
         name_line_frame = ttk.Frame(right_frame, style="Panel.TFrame")
         name_line_frame.grid(row=7, column=0, padx=8, pady=(0, 8), sticky="w")
         for opt in ["primeira", "segunda", "terceira", "última"]:
-            rb = ttk.Radiobutton(name_line_frame, text=opt.capitalize(), variable=self.name_line_var, value=opt)
+            rb = ttk.Radiobutton(
+                name_line_frame,
+                text=opt.capitalize(),
+                variable=self.name_line_var,
+                value=opt,
+            )
             rb.pack(side="left", padx=(0, 12))
 
         # Config buttons
         cfg_btn_frame = ttk.Frame(main_frame, style="App.TFrame")
         cfg_btn_frame.pack(fill="x", pady=(0, 20))
-        ttk.Button(cfg_btn_frame, text="Salvar Configuração", command=self._save_ui_config, bootstyle="success").pack(side="left", padx=8, fill="x", expand=True)
-        ttk.Button(cfg_btn_frame, text="Carregar Configuração", command=self._load_config_file, bootstyle="info").pack(side="left", padx=8, fill="x", expand=True)
+        ttk.Button(
+            cfg_btn_frame,
+            text="[SALVAR CONFIGURAÇÃO]",
+            command=self._save_ui_config,
+            bootstyle="success",
+        ).pack(side="left", padx=8, fill="x", expand=True)
+        ttk.Button(
+            cfg_btn_frame,
+            text="[CARREGAR CONFIGURAÇÃO]",
+            command=self._load_config_file,
+            bootstyle="info",
+        ).pack(side="left", padx=8, fill="x", expand=True)
 
         # Action buttons
         btn_frame = ttk.Frame(main_frame, style="App.TFrame")
         btn_frame.pack(fill="x", pady=(0, 20))
-        self.download_btn = ttk.Button(btn_frame, text="Iniciar Download", command=self._start_download, bootstyle="success")
+        self.download_btn = ttk.Button(
+            btn_frame,
+            text="[INICIAR DOWNLOAD]",
+            command=self._start_download,
+            bootstyle="success",
+        )
         self.download_btn.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        self.stop_btn = ttk.Button(btn_frame, text="Parar Download", command=self._stop_download, bootstyle="danger", state="disabled")
+        self.stop_btn = ttk.Button(
+            btn_frame,
+            text="[PARAR DOWNLOAD]",
+            command=self._stop_download,
+            bootstyle="danger",
+            state="disabled",
+        )
         self.stop_btn.pack(side="left", fill="x", expand=True, padx=(8, 0))
 
         # Progress frame
-        prog_frame = ttk.Labelframe(main_frame, text="Progresso", style="Section.TLabelframe")
+        prog_frame = ttk.Labelframe(
+            main_frame, text="// PROGRESSO", style="Section.TLabelframe"
+        )
         prog_frame.pack(fill="x", pady=(0, 20))
-        self.current_file_label = ttk.Label(prog_frame, text="Nenhum arquivo em andamento", style="Subtitle.TLabel")
+        self.current_file_label = ttk.Label(
+            prog_frame, text="// Nenhum arquivo em andamento", style="Subtitle.TLabel"
+        )
         self.current_file_label.pack(fill="x", padx=8, pady=(8, 4))
-        self.progress_bar = ttk.Progressbar(prog_frame, mode='determinate', bootstyle="success-striped")
+        self.progress_bar = ttk.Progressbar(
+            prog_frame, mode="determinate", bootstyle="success-striped"
+        )
         self.progress_bar.pack(fill="x", padx=8, pady=6)
-        self.progress_label = ttk.Label(prog_frame, text="Aguardando...", style="App.TLabel")
+        self.progress_label = ttk.Label(
+            prog_frame, text="// Aguardando...", style="Subtitle.TLabel"
+        )
         self.progress_label.pack(anchor="w", padx=8, pady=(0, 8))
 
         # Log area (collapsible)
-        log_frame = ttk.Labelframe(main_frame, text="Log de Operações", style="Log.TLabelframe")
+        log_frame = ttk.Labelframe(
+            main_frame, text="// LOG DE OPERAÇÕES", style="Log.TLabelframe"
+        )
         log_frame.pack(fill="both", expand=True, padx=8, pady=(0, 8))
         log_header = ttk.Frame(log_frame, style="Panel.TFrame")
         log_header.pack(fill="x", padx=8, pady=(8, 4))
         self.log_visible = ttk.BooleanVar(value=False)
-        self.toggle_log_btn = ttk.Button(log_header, text="Mostrar Log", command=self._toggle_log, bootstyle="secondary")
+        self.toggle_log_btn = ttk.Button(
+            log_header,
+            text="[MOSTRAR LOG]",
+            command=self._toggle_log,
+            bootstyle="secondary",
+        )
         self.toggle_log_btn.pack(side="left", padx=8)
         self.log_content_frame = ttk.Frame(log_frame, style="Panel.TFrame")
-        self.log_text = ttk.Text(self.log_content_frame, wrap="word", font=self.font_mono, height=10, background=self.color_panel_alt, foreground=self.color_text, insertbackground=self.color_text, borderwidth=1, relief="solid")
-        scrollbar = ttk.Scrollbar(self.log_content_frame, orient="vertical", command=self.log_text.yview)
+        self.log_text = ttk.Text(
+            self.log_content_frame,
+            wrap="word",
+            font=self.font_mono,
+            height=10,
+            background=self.color_panel_alt,
+            foreground=self.color_text,
+            insertbackground=self.color_text,
+            borderwidth=1,
+            relief="solid",
+        )
+        scrollbar = ttk.Scrollbar(
+            self.log_content_frame, orient="vertical", command=self.log_text.yview
+        )
         self.log_text.configure(yscrollcommand=scrollbar.set)
-        self.log_text.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=(0, 8))
+        self.log_text.pack(
+            side="left", fill="both", expand=True, padx=(8, 0), pady=(0, 8)
+        )
         scrollbar.pack(side="right", fill="y", pady=(0, 8))
         self.log_content_frame.pack_forget()
 
         # Logout button
-        ttk.Button(main_frame, text="Logout", command=self._logout, bootstyle="secondary").pack(pady=(12, 8))
+        ttk.Button(
+            main_frame, text="[LOGOUT]", command=self._logout, bootstyle="secondary"
+        ).pack(pady=(12, 8))
 
         self.update_idletasks()
 
@@ -456,11 +664,11 @@ class TelegramDownloaderGUI(ttk.Window):
     def _toggle_log(self):
         if self.log_visible.get():
             self.log_content_frame.pack_forget()
-            self.toggle_log_btn.configure(text="Mostrar Log")
+            self.toggle_log_btn.configure(text="[MOSTRAR LOG]")
             self.log_visible.set(False)
         else:
             self.log_content_frame.pack(fill="both", expand=True, padx=6, pady=4)
-            self.toggle_log_btn.configure(text="Ocultar Log")
+            self.toggle_log_btn.configure(text="[OCULTAR LOG]")
             self.log_visible.set(True)
         self.update_idletasks()
 
@@ -487,22 +695,28 @@ class TelegramDownloaderGUI(ttk.Window):
     # ---------- Config saving/loading from main UI ----------
     def _save_ui_config(self):
         cfg = load_config() or {}
-        cfg.update({
-            "target": self.target_entry.get().strip(),
-            "tags": self.tags_entry.get().strip(),
-            "output_path": self.output_entry.get().strip(),
-            "limit": self.limit_entry.get().strip(),
-            "session_name": self.session_entry.get().strip() or cfg.get("session_name", "session"),
-            "max_flood_wait": self.max_flood_entry.get().strip(),
-            "name_line": self.name_line_var.get(),
-        })
+        cfg.update(
+            {
+                "target": self.target_entry.get().strip(),
+                "tags": self.tags_entry.get().strip(),
+                "output_path": self.output_entry.get().strip(),
+                "limit": self.limit_entry.get().strip(),
+                "session_name": self.session_entry.get().strip()
+                or cfg.get("session_name", "session"),
+                "max_flood_wait": self.max_flood_entry.get().strip(),
+                "name_line": self.name_line_var.get(),
+            }
+        )
         save_config(cfg)
         self.config = cfg
         messagebox.showinfo("Sucesso", "Configuração salva em config.json (pasta src/)")
         self._log("Configuração salva em config.json")
 
     def _load_config_file(self):
-        file_path = filedialog.askopenfilename(title="Carregar Configuração", filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
+        file_path = filedialog.askopenfilename(
+            title="Carregar Configuração",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+        )
         if not file_path:
             return
         try:
@@ -510,19 +724,25 @@ class TelegramDownloaderGUI(ttk.Window):
                 cfg = json.load(f)
             # apply to fields
             if "target" in cfg:
-                self.target_entry.delete(0, "end"); self.target_entry.insert(0, cfg.get("target",""))
+                self.target_entry.delete(0, "end")
+                self.target_entry.insert(0, cfg.get("target", ""))
             if "tags" in cfg:
-                self.tags_entry.delete(0, "end"); self.tags_entry.insert(0, cfg.get("tags",""))
+                self.tags_entry.delete(0, "end")
+                self.tags_entry.insert(0, cfg.get("tags", ""))
             if "output_path" in cfg:
-                self.output_entry.delete(0, "end"); self.output_entry.insert(0, cfg.get("output_path","./downloads"))
+                self.output_entry.delete(0, "end")
+                self.output_entry.insert(0, cfg.get("output_path", "./downloads"))
             if "limit" in cfg:
-                self.limit_entry.delete(0, "end"); self.limit_entry.insert(0, str(cfg.get("limit","0")))
+                self.limit_entry.delete(0, "end")
+                self.limit_entry.insert(0, str(cfg.get("limit", "0")))
             if "session_name" in cfg:
-                self.session_entry.delete(0, "end"); self.session_entry.insert(0, cfg.get("session_name","session"))
+                self.session_entry.delete(0, "end")
+                self.session_entry.insert(0, cfg.get("session_name", "session"))
             if "max_flood_wait" in cfg:
-                self.max_flood_entry.delete(0, "end"); self.max_flood_entry.insert(0, str(cfg.get("max_flood_wait","300")))
+                self.max_flood_entry.delete(0, "end")
+                self.max_flood_entry.insert(0, str(cfg.get("max_flood_wait", "300")))
             if "name_line" in cfg:
-                self.name_line_var.set(cfg.get("name_line","última"))
+                self.name_line_var.set(cfg.get("name_line", "última"))
             messagebox.showinfo("Sucesso", f"Configuração carregada de:\n{file_path}")
             self._log(f"Configuração carregada: {file_path}")
         except Exception as e:
@@ -531,10 +751,17 @@ class TelegramDownloaderGUI(ttk.Window):
 
     # ---------- Logout ----------
     def _logout(self):
-        session_name = (self.session_entry.get().strip() or self.config.get("session_name", "session"))
-        if messagebox.askyesno("Confirmar logout", "Deseja limpar config.json e a sessão local?"):
+        session_name = self.session_entry.get().strip() or self.config.get(
+            "session_name", "session"
+        )
+        if messagebox.askyesno(
+            "Confirmar logout", "Deseja limpar config.json e a sessão local?"
+        ):
             delete_config_and_session(session_name)
-            messagebox.showinfo("Logout", "Sessão e config removidos. O app será reiniciado para o login.")
+            messagebox.showinfo(
+                "Logout",
+                "Sessão e config removidos. O app será reiniciado para o login.",
+            )
             # restart UI to login
             self.config = {}
             self._build_login_interface()
@@ -549,12 +776,15 @@ class TelegramDownloaderGUI(ttk.Window):
         if not tags_text:
             self._log("Erro: Tags são obrigatórias!")
             return False
-        tags_list = [t.strip() for t in tags_text.replace(" ", ",").split(",") if t.strip()]
+        tags_list = [
+            t.strip() for t in tags_text.replace(" ", ",").split(",") if t.strip()
+        ]
         if not tags_list:
             self._log("Erro: Nenhuma tag válida encontrada!")
             return False
         # update formatted tags
-        self.tags_entry.delete(0, "end"); self.tags_entry.insert(0, ", ".join(tags_list))
+        self.tags_entry.delete(0, "end")
+        self.tags_entry.insert(0, ", ".join(tags_list))
         out = self.output_entry.get().strip()
         if not out:
             self._log("Erro: Diretório de saída é obrigatório!")
@@ -600,17 +830,21 @@ class TelegramDownloaderGUI(ttk.Window):
         if not self.log_visible.get():
             self._toggle_log()
         self.update_idletasks()
-        threading.Thread(target=lambda: asyncio.run(self._download_videos_async()), daemon=True).start()
+        threading.Thread(
+            target=lambda: asyncio.run(self._download_videos_async()), daemon=True
+        ).start()
 
     def _stop_download(self):
         self.downloading = False
         self._log("Parando download...")
         if self.client and self._download_loop:
+
             def _disconnect():
                 try:
                     asyncio.create_task(self.client.disconnect())
                 except Exception:
                     pass
+
             try:
                 self._download_loop.call_soon_threadsafe(_disconnect)
             except Exception:
@@ -624,7 +858,9 @@ class TelegramDownloaderGUI(ttk.Window):
         self._download_loop = asyncio.get_running_loop()
         cfg = load_config() or self.config or {}
         if not cfg.get("api_id") or not cfg.get("api_hash"):
-            msg_err = "api_id/api_hash não encontrados no config.json.\nFaça login novamente."
+            msg_err = (
+                "api_id/api_hash não encontrados no config.json.\nFaça login novamente."
+            )
             self._log(f"Erro: {msg_err}")
             self._show_notification("Erro de Configuração", msg_err, "error")
             self.after(0, lambda: self.download_btn.configure(state="normal"))
@@ -638,8 +874,12 @@ class TelegramDownloaderGUI(ttk.Window):
         tags_str = self.tags_entry.get().strip()
         out_path = self.output_entry.get().strip()
         limit = int(self.limit_entry.get().strip() or 0)
-        session_name = self.session_entry.get().strip() or cfg.get("session_name", "session")
-        max_flood_wait = int(self.max_flood_entry.get().strip() or cfg.get("max_flood_wait", 300))
+        session_name = self.session_entry.get().strip() or cfg.get(
+            "session_name", "session"
+        )
+        max_flood_wait = int(
+            self.max_flood_entry.get().strip() or cfg.get("max_flood_wait", 300)
+        )
         name_line_choice = self.name_line_var.get()
 
         # Ensure output dir
@@ -647,12 +887,16 @@ class TelegramDownloaderGUI(ttk.Window):
 
         # Prepare CSV path in output and a backup in src
         csv_path_out = os.path.join(out_path, "videos_baixados.csv")
-        csv_backup_path = os.path.join(BASE_DIR, f"videos_baixados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+        csv_backup_path = os.path.join(
+            BASE_DIR, f"videos_baixados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        )
 
         tags = [t.strip() for t in tags_str.split(",") if t.strip()]
         if not tags:
             self._log("Nenhuma tag válida informada!")
-            self._show_notification("Erro de Input", "Nenhuma tag válida informada!", "error")
+            self._show_notification(
+                "Erro de Input", "Nenhuma tag válida informada!", "error"
+            )
             self.after(0, lambda: self.download_btn.configure(state="normal"))
             return
 
@@ -661,10 +905,16 @@ class TelegramDownloaderGUI(ttk.Window):
         try:
             await client.start()
             me = await client.get_me()
-            self._log(f"Conectado como: {getattr(me,'username',None) or getattr(me,'first_name',str(me))}")
+            self._log(
+                f"Conectado como: {getattr(me, 'username', None) or getattr(me, 'first_name', str(me))}"
+            )
         except Exception as e:
             self._log(f"Erro ao conectar: {e}")
-            self._show_notification("Erro de Conexão", f"Não foi possível conectar ao Telegram:\n{e}", "error")
+            self._show_notification(
+                "Erro de Conexão",
+                f"Não foi possível conectar ao Telegram:\n{e}",
+                "error",
+            )
             return
 
         registros: List[Dict] = []
@@ -695,7 +945,11 @@ class TelegramDownloaderGUI(ttk.Window):
                     await asyncio.sleep(e.seconds + 1)
                 except Exception as e:
                     self._log(f"Erro ao resolver entidade: {e}")
-                    self._show_notification("Erro de Target", f"Não foi possível encontrar o canal/grupo:\n{target}\n\nErro: {e}", "error")
+                    self._show_notification(
+                        "Erro de Target",
+                        f"Não foi possível encontrar o canal/grupo:\n{target}\n\nErro: {e}",
+                        "error",
+                    )
                     await client.disconnect()
                     return
 
@@ -734,7 +988,11 @@ class TelegramDownloaderGUI(ttk.Window):
                                 continue
 
                         # extract video name
-                        lines = [l.strip() for l in (msg.message or "").split("\n") if l.strip()]
+                        lines = [
+                            l.strip()
+                            for l in (msg.message or "").split("\n")
+                            if l.strip()
+                        ]
                         if not lines:
                             video_name = f"msg{msg.id}"
                         else:
@@ -764,7 +1022,12 @@ class TelegramDownloaderGUI(ttk.Window):
                             self.last_progress_bytes = 0
 
                             # update UI filename
-                            self.after(0, lambda f=file_path: self.current_file_label.configure(text=f"Arquivo: {os.path.basename(f)}"))
+                            self.after(
+                                0,
+                                lambda f=file_path: self.current_file_label.configure(
+                                    text=f"Arquivo: {os.path.basename(f)}"
+                                ),
+                            )
 
                             def progress_wrapper(current, total):
                                 try:
@@ -774,18 +1037,24 @@ class TelegramDownloaderGUI(ttk.Window):
                                 except Exception:
                                     pass
 
-                            await client.download_media(msg, file=file_path, progress_callback=progress_wrapper)
+                            await client.download_media(
+                                msg, file=file_path, progress_callback=progress_wrapper
+                            )
 
                             self._log(f"Concluído: {filename}")
                             total_baixados += 1
                             count_tag += 1
-                            registros.append({
-                                "tag": tag,
-                                "msg_id": msg.id,
-                                "data": msg.date.strftime("%Y-%m-%d %H:%M:%S") if msg.date else "",
-                                "arquivo": filename,
-                                "legenda": msg.message or "",
-                            })
+                            registros.append(
+                                {
+                                    "tag": tag,
+                                    "msg_id": msg.id,
+                                    "data": msg.date.strftime("%Y-%m-%d %H:%M:%S")
+                                    if msg.date
+                                    else "",
+                                    "arquivo": filename,
+                                    "legenda": msg.message or "",
+                                }
+                            )
 
                         except FloodWaitError as e:
                             self._log(f"Flood wait ({e.seconds}s) → aguardando...")
@@ -804,7 +1073,7 @@ class TelegramDownloaderGUI(ttk.Window):
                             except Exception:
                                 pass
                             continue
-                        
+
                         if limit and count_tag >= limit:
                             break
 
@@ -843,10 +1112,12 @@ class TelegramDownloaderGUI(ttk.Window):
             except Exception as e:
                 self._log(f"Erro ao salvar CSV: {e}")
 
-        self._log(f"\nFinalizado: {total_baixados} vídeos baixados ({total_encontrados} mensagens verificadas). Erros: {total_erros}")
+        self._log(
+            f"\nFinalizado: {total_baixados} vídeos baixados ({total_encontrados} mensagens verificadas). Erros: {total_erros}"
+        )
         self.after(0, lambda: self.progress_bar.config(value=100))
         self.after(0, lambda: self.progress_label.configure(text="Concluído!"))
-        
+
         # Notification
         if total_erros > 0:
             msg = f"Download concluído com alertas!\n\nBaixados: {total_baixados}\nErros: {total_erros}\nVerifique o log para detalhes."
@@ -860,7 +1131,9 @@ class TelegramDownloaderGUI(ttk.Window):
         self.after(0, lambda: self.stop_btn.configure(state="disabled"))
 
     # ---------- Progress helpers ----------
-    def _progress_callback(self, current: int, total: int, filepath: Optional[str] = None):
+    def _progress_callback(
+        self, current: int, total: int, filepath: Optional[str] = None
+    ):
         if total <= 0:
             return
         try:
@@ -870,7 +1143,9 @@ class TelegramDownloaderGUI(ttk.Window):
                 return
             time_diff = current_time - self.last_progress_time
             bytes_diff = current - self.last_progress_bytes
-            speed_mb = (bytes_diff / time_diff / (1024 * 1024)) if time_diff > 0 else 0.0
+            speed_mb = (
+                (bytes_diff / time_diff / (1024 * 1024)) if time_diff > 0 else 0.0
+            )
             self.last_progress_time = current_time
             self.last_progress_bytes = current
             self.last_ui_update_time = current_time
@@ -880,24 +1155,41 @@ class TelegramDownloaderGUI(ttk.Window):
                 bytes_remaining = total - current
                 # speed_mb is MB/s; convert to bytes/s for ETA calc or use MB units consistently
                 # bytes_remaining / (speed_mb * 1024*1024)
-                eta_seconds = int(bytes_remaining / (speed_mb * 1024 * 1024)) if speed_mb > 0 else 0
+                eta_seconds = (
+                    int(bytes_remaining / (speed_mb * 1024 * 1024))
+                    if speed_mb > 0
+                    else 0
+                )
                 eta_min = eta_seconds // 60
                 eta_sec = eta_seconds % 60
                 eta_str = f"ETA: {eta_min}m{eta_sec:02d}s"
             else:
                 eta_str = "ETA: --"
             # schedule UI update
-            self.after(0, self._update_progress_ui, progress, current_mb, total_mb, speed_mb, eta_str, filepath)
+            self.after(
+                0,
+                self._update_progress_ui,
+                progress,
+                current_mb,
+                total_mb,
+                speed_mb,
+                eta_str,
+                filepath,
+            )
         except Exception:
             pass
 
-    def _update_progress_ui(self, progress, current_mb, total_mb, speed_mb, eta_str, filename=None):
+    def _update_progress_ui(
+        self, progress, current_mb, total_mb, speed_mb, eta_str, filename=None
+    ):
         try:
-            self.progress_bar['value'] = progress * 100
+            self.progress_bar["value"] = progress * 100
             progress_text = f"{progress * 100:.1f}% ({current_mb:.1f}/{total_mb:.1f} MB) - {speed_mb:.2f} MB/s - {eta_str}"
             self.progress_label.configure(text=progress_text)
             if filename:
-                self.current_file_label.configure(text=f"Arquivo: {os.path.basename(filename)}")
+                self.current_file_label.configure(
+                    text=f"Arquivo: {os.path.basename(filename)}"
+                )
             elif not self.downloading:
                 self.current_file_label.configure(text="Nenhum arquivo em andamento")
         except Exception as e:
@@ -909,20 +1201,28 @@ class TelegramDownloaderGUI(ttk.Window):
         Thread-safe helper to show system notification using plyer.
         It launches the notification in a separate thread to avoid freezing the GUI.
         """
+
         def _notify():
             try:
                 notification.notify(
                     title=title,
                     message=message,
                     app_name="Telegram Downloader",
-                    timeout=10
+                    timeout=10,
                 )
             except Exception as e:
                 print(f"Erro ao exibir notificação: {e}")
                 # Fallback to tkinter if plyer fails (e.g. missing dependencies on linux)
-                self.after(0, lambda: messagebox.showinfo(title, message) if type_ == "info" 
-                           else messagebox.showwarning(title, message) if type_ == "warning" 
-                           else messagebox.showerror(title, message))
+                self.after(
+                    0,
+                    lambda: (
+                        messagebox.showinfo(title, message)
+                        if type_ == "info"
+                        else messagebox.showwarning(title, message)
+                        if type_ == "warning"
+                        else messagebox.showerror(title, message)
+                    ),
+                )
 
         threading.Thread(target=_notify, daemon=True).start()
 
