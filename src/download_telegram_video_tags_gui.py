@@ -14,7 +14,9 @@ import ttkbootstrap as ttk
 from plyer import notification
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError, SessionPasswordNeededError
+from telethon.tl.types import InputMessagesFilterVideo
 from ttkbootstrap.constants import *
+from ttkbootstrap.widgets.scrolled import ScrolledFrame
 
 import tcl_fix
 
@@ -258,7 +260,6 @@ class TelegramDownloaderGUI(ttk.Window):
             messagebox.showerror("Erro", "API ID deve ser um número.")
             return
 
-        print(f"[DEBUG] Iniciando login com phone: {phone}")
         self.login_status.configure(text="Conectando...")
         self.update_idletasks()
         
@@ -268,17 +269,16 @@ class TelegramDownloaderGUI(ttk.Window):
         ).start()
 
     async def _login_flow(self, api_id: str, api_hash: str, phone: str):
+        def _set_status(msg):
+            self.after(0, lambda m=msg: self.login_status.configure(text=m))
+
         session_name = self.config.get("session_name", "session")
-        print(f"[DEBUG] Criando TelegramClient para session: {session_name}")
         client = TelegramClient(
             os.path.join(BASE_DIR, session_name), int(api_id), api_hash
         )
         try:
-            print(f"[DEBUG] Conectando ao Telegram...")
             await client.connect()
-            print(f"[DEBUG] Conectado. Verificando autorização...")
         except Exception as e:
-            print(f"[DEBUG] Erro ao conectar: {e}")
             self.after(
                 0,
                 lambda err=e: self.login_status.configure(
@@ -288,66 +288,8 @@ class TelegramDownloaderGUI(ttk.Window):
             return
 
         try:
-            if not await client.is_user_authorized():
-                print(f"[DEBUG] Usuário não autorizado. Enviando código para {phone}...")
-                try:
-                    await client.send_code_request(phone)
-                    print(f"[DEBUG] Código enviado com sucesso!")
-                except Exception as e:
-                    print(f"[DEBUG] Erro ao enviar código: {e}")
-                    await client.disconnect()
-                    self.after(
-                        0,
-                        lambda err=e: self.login_status.configure(
-                            text=f"Erro ao enviar código: {err}"
-                        ),
-                    )
-                    return
-
-                code = await self._ask_modal_input_async(
-                    "Código de verificação", "Digite o código enviado ao Telegram:"
-                )
-                if code is None:
-                    await client.disconnect()
-                    self.after(
-                        0, lambda: self.login_status.configure(text="Login cancelado.")
-                    )
-                    return
-
-                try:
-                    await client.sign_in(phone, code)
-                except SessionPasswordNeededError:
-                    # ask for 2FA password
-                    pwd = await self._ask_modal_input_async(
-                        "Senha 2FA", "Digite sua senha (2FA):", hide=True
-                    )
-                    if pwd is None:
-                        await client.disconnect()
-                        self.after(
-                            0,
-                            lambda: self.login_status.configure(text="2FA cancelada."),
-                        )
-                        return
-                    try:
-                        await client.sign_in(password=pwd)
-                    except Exception as e:
-                        await client.disconnect()
-                        self.after(
-                            0,
-                            lambda err=e: self.login_status.configure(
-                                text=f"Erro 2FA: {err}"
-                            ),
-                        )
-                        return
-                except Exception as e:
-                    await client.disconnect()
-                    self.after(
-                        0,
-                        lambda err=e: self.login_status.configure(
-                            text=f"Erro ao autenticar: {err}"
-                        ),
-                    )
-                    return
+            if not await self._authorize_client_async(client, phone, _set_status):
+                return
 
             # success: save config in src/
             cfg = {
@@ -362,10 +304,10 @@ class TelegramDownloaderGUI(ttk.Window):
                 "limit": "0",
                 "max_flood_wait": "300",
                 "name_line": "última",
+                "mode": "tags",
             }
             save_config(cfg)
             self.config = cfg
-            await client.disconnect()
             # switch to main UI on main thread
             self.after(0, self._build_main_interface)
         finally:
@@ -373,6 +315,62 @@ class TelegramDownloaderGUI(ttk.Window):
                 await client.disconnect()
             except Exception:
                 pass
+
+    async def _authorize_client_async(self, client: TelegramClient, phone: str, status_fn) -> bool:
+        """
+        Garante que o client esteja autorizado.
+        - Sessão válida: usa a session salva, sem pedir nada (sem prompt de terminal).
+        - Sem sessão válida: autentica via modais (código/2FA), nunca via input() no terminal.
+        status_fn(msg) reporta erros/cancelamentos à interface do chamador.
+        Retorna True se autorizado, False caso contrário.
+        """
+        try:
+            if await client.is_user_authorized():
+                return True
+        except Exception as e:
+            status_fn(f"Erro ao verificar sessão: {e}")
+            return False
+
+        if not phone:
+            phone = await self._ask_modal_input_async(
+                "Telefone", "Digite seu telefone para autenticar (ex: +55XXXXXXXXXXX):"
+            )
+            if not phone:
+                status_fn("Login cancelado: telefone não informado.")
+                return False
+
+        try:
+            await client.send_code_request(phone)
+        except Exception as e:
+            status_fn(f"Erro ao enviar código: {e}")
+            return False
+
+        code = await self._ask_modal_input_async(
+            "Código de verificação", "Digite o código enviado ao Telegram:"
+        )
+        if code is None:
+            status_fn("Login cancelado pelo usuário.")
+            return False
+
+        try:
+            await client.sign_in(phone, code)
+        except SessionPasswordNeededError:
+            pwd = await self._ask_modal_input_async(
+                "Senha 2FA", "Digite sua senha (2FA):", hide=True
+            )
+            if pwd is None:
+                status_fn("2FA cancelada pelo usuário.")
+                return False
+            try:
+                await client.sign_in(password=pwd)
+            except Exception as e:
+                status_fn(f"Erro 2FA: {e}")
+                return False
+        except Exception as e:
+            status_fn(f"Erro ao autenticar: {e}")
+            return False
+
+        return True
 
     async def _ask_modal_input_async(
         self, title: str, prompt: str, hide: bool = False
@@ -422,6 +420,116 @@ class TelegramDownloaderGUI(ttk.Window):
             ttk.Button(
                 btns, text="Cancelar", width=12, bootstyle="secondary", command=_cancel
             ).pack(side="left", padx=8)
+
+        self.after(0, show_dialog)
+        try:
+            return await fut
+        except Exception:
+            return None
+
+    async def _ask_video_selection_async(
+        self, videos: List[tuple]
+    ) -> Optional[List[int]]:
+        """Pop-up modal listando vídeos com checkbox; retorna msg_ids selecionados (None se cancelar)."""
+        loop = asyncio.get_event_loop()
+        fut = loop.create_future()
+        videos = list(videos)
+
+        def _set_result_threadsafe(val):
+            if fut.done():
+                return
+            try:
+                loop.call_soon_threadsafe(
+                    lambda: fut.set_result(val) if not fut.done() else None
+                )
+            except Exception:
+                if not fut.done():
+                    fut.set_result(val)
+
+        def show_dialog():
+            dlg = ttk.Toplevel(self)
+            dlg.title(f"Selecionar Vídeos ({len(videos)})")
+            dlg.geometry("720x560")
+            dlg.transient(self)
+            dlg.grab_set()
+
+            header = ttk.Frame(dlg, style="Panel.TFrame")
+            header.pack(fill="x", padx=12, pady=(12, 4))
+            ttk.Label(
+                header,
+                text=f"// {len(videos)} vídeos encontrados. Marque os que deseja baixar:",
+                font=self.font_label,
+                foreground=self.color_accent,
+            ).pack(anchor="w")
+
+            count_label = ttk.Label(
+                header, text="// Selecionados: 0", style="Subtitle.TLabel"
+            )
+            count_label.pack(anchor="w", pady=(2, 0))
+
+            list_frame = ScrolledFrame(dlg, autohide=False)
+            list_frame.pack(fill="both", expand=True, padx=12, pady=6)
+
+            content = list_frame
+            vars_by_id = {}
+
+            def _update_count():
+                n = sum(1 for v in vars_by_id.values() if v.get())
+                count_label.configure(text=f"// Selecionados: {n}")
+                download_btn.configure(text=f"Baixar Selecionados ({n})")
+
+            for msg_id, title in videos:
+                var = ttk.BooleanVar(value=False)
+                vars_by_id[msg_id] = var
+                ttk.Checkbutton(
+                    content,
+                    text=f"[{msg_id}] {title}",
+                    variable=var,
+                    command=_update_count,
+                ).pack(anchor="w", padx=4, pady=2)
+
+            def _collect():
+                selected = [mid for mid, var in vars_by_id.items() if var.get()]
+                dlg.grab_release()
+                dlg.destroy()
+                _set_result_threadsafe(selected)
+
+            def _cancel():
+                dlg.grab_release()
+                dlg.destroy()
+                _set_result_threadsafe(None)
+
+            btns = ttk.Frame(dlg, style="Panel.TFrame")
+            btns.pack(fill="x", padx=12, pady=(6, 12))
+            ttk.Button(
+                btns,
+                text="[SELECIONAR TUDO]",
+                bootstyle="secondary",
+                command=lambda: (
+                    [v.set(True) for v in vars_by_id.values()] or _update_count()
+                ),
+            ).pack(side="left", padx=4)
+            ttk.Button(
+                btns,
+                text="[LIMPAR]",
+                bootstyle="secondary",
+                command=lambda: (
+                    [v.set(False) for v in vars_by_id.values()] or _update_count()
+                ),
+            ).pack(side="left", padx=4)
+
+            download_btn = ttk.Button(
+                btns,
+                text="Baixar Selecionados (0)",
+                bootstyle="success",
+                command=_collect,
+            )
+            download_btn.pack(side="left", expand=True, fill="x", padx=4)
+            ttk.Button(
+                btns, text="[CANCELAR]", bootstyle="danger", command=_cancel
+            ).pack(side="left", padx=4)
+
+            _update_count()
 
         self.after(0, show_dialog)
         try:
@@ -500,6 +608,24 @@ class TelegramDownloaderGUI(ttk.Window):
             command=self._browse_output,
             bootstyle="secondary",
         ).grid(row=0, column=1)
+
+        # Mode selector
+        ttk.Label(left_frame, text="// Modo:", style="FieldConsole.TLabel").grid(
+            row=6, column=0, sticky="w", padx=8, pady=(8, 4)
+        )
+        self.mode_var = ttk.StringVar(value=self.config.get("mode", "tags"))
+        mode_frame = ttk.Frame(left_frame, style="Panel.TFrame")
+        mode_frame.grid(row=7, column=0, padx=8, pady=(0, 8), sticky="w")
+        for opt, label in [("tags", "Tags"), ("videos", "Todos os Vídeos")]:
+            rb = ttk.Radiobutton(
+                mode_frame,
+                text=label,
+                variable=self.mode_var,
+                value=opt,
+                command=self._on_mode_change,
+            )
+            rb.pack(side="left", padx=(0, 12))
+        self._on_mode_change()
 
         left_frame.columnconfigure(0, weight=1)
 
@@ -661,6 +787,11 @@ class TelegramDownloaderGUI(ttk.Window):
             self.output_entry.delete(0, "end")
             self.output_entry.insert(0, folder)
 
+    def _on_mode_change(self):
+        mode = self.mode_var.get()
+        state = "normal" if mode == "tags" else "disabled"
+        self.tags_entry.configure(state=state)
+
     def _toggle_log(self):
         if self.log_visible.get():
             self.log_content_frame.pack_forget()
@@ -705,6 +836,7 @@ class TelegramDownloaderGUI(ttk.Window):
                 or cfg.get("session_name", "session"),
                 "max_flood_wait": self.max_flood_entry.get().strip(),
                 "name_line": self.name_line_var.get(),
+                "mode": self.mode_var.get(),
             }
         )
         save_config(cfg)
@@ -743,6 +875,9 @@ class TelegramDownloaderGUI(ttk.Window):
                 self.max_flood_entry.insert(0, str(cfg.get("max_flood_wait", "300")))
             if "name_line" in cfg:
                 self.name_line_var.set(cfg.get("name_line", "última"))
+            if "mode" in cfg:
+                self.mode_var.set(cfg.get("mode", "tags"))
+                self._on_mode_change()
             messagebox.showinfo("Sucesso", f"Configuração carregada de:\n{file_path}")
             self._log(f"Configuração carregada: {file_path}")
         except Exception as e:
@@ -772,19 +907,21 @@ class TelegramDownloaderGUI(ttk.Window):
         if not target:
             self._log("Erro: Canal/Grupo é obrigatório!")
             return False
-        tags_text = self.tags_entry.get().strip()
-        if not tags_text:
-            self._log("Erro: Tags são obrigatórias!")
-            return False
-        tags_list = [
-            t.strip() for t in tags_text.replace(" ", ",").split(",") if t.strip()
-        ]
-        if not tags_list:
-            self._log("Erro: Nenhuma tag válida encontrada!")
-            return False
-        # update formatted tags
-        self.tags_entry.delete(0, "end")
-        self.tags_entry.insert(0, ", ".join(tags_list))
+        mode = self.mode_var.get()
+        if mode == "tags":
+            tags_text = self.tags_entry.get().strip()
+            if not tags_text:
+                self._log("Erro: Tags são obrigatórias no modo Tags!")
+                return False
+            tags_list = [
+                t.strip() for t in tags_text.replace(" ", ",").split(",") if t.strip()
+            ]
+            if not tags_list:
+                self._log("Erro: Nenhuma tag válida encontrada!")
+                return False
+            # update formatted tags
+            self.tags_entry.delete(0, "end")
+            self.tags_entry.insert(0, ", ".join(tags_list))
         out = self.output_entry.get().strip()
         if not out:
             self._log("Erro: Diretório de saída é obrigatório!")
@@ -881,6 +1018,7 @@ class TelegramDownloaderGUI(ttk.Window):
             self.max_flood_entry.get().strip() or cfg.get("max_flood_wait", 300)
         )
         name_line_choice = self.name_line_var.get()
+        mode = self.mode_var.get()
 
         # Ensure output dir
         Path(out_path).mkdir(parents=True, exist_ok=True)
@@ -892,7 +1030,7 @@ class TelegramDownloaderGUI(ttk.Window):
         )
 
         tags = [t.strip() for t in tags_str.split(",") if t.strip()]
-        if not tags:
+        if mode == "tags" and not tags:
             self._log("Nenhuma tag válida informada!")
             self._show_notification(
                 "Erro de Input", "Nenhuma tag válida informada!", "error"
@@ -903,7 +1041,12 @@ class TelegramDownloaderGUI(ttk.Window):
         client = TelegramClient(os.path.join(BASE_DIR, session_name), api_id, api_hash)
         self.client = client
         try:
-            await client.start()
+            await client.connect()
+            if not await self._authorize_client_async(
+                client, cfg.get("phone", ""), lambda m: self._log(m)
+            ):
+                await client.disconnect()
+                return
             me = await client.get_me()
             self._log(
                 f"Conectado como: {getattr(me, 'username', None) or getattr(me, 'first_name', str(me))}"
@@ -922,92 +1065,117 @@ class TelegramDownloaderGUI(ttk.Window):
         total_encontrados = 0
         total_erros = 0
 
-        for tag in tags:
-            if not self.downloading:
-                self._log("Download cancelado pelo usuário.")
-                break
+        # resolve entity once
+        entity = None
+        while self.downloading and entity is None:
+            try:
+                entity = await client.get_input_entity(target)
+            except FloodWaitError as e:
+                self._log(f"Flood wait ao resolver target ({e.seconds}s)")
+                if e.seconds > max_flood_wait:
+                    self._log(f"Flood wait muito longo ({e.seconds}s). Abortando.")
+                    await client.disconnect()
+                    return
+                self._log(f"Aguardando {e.seconds}s...")
+                await asyncio.sleep(e.seconds + 1)
+            except Exception as e:
+                self._log(f"Erro ao resolver entidade: {e}")
+                self._show_notification(
+                    "Erro de Target",
+                    f"Não foi possível encontrar o canal/grupo:\n{target}\n\nErro: {e}",
+                    "error",
+                )
+                await client.disconnect()
+                return
 
-            self._log(f"\nProcurando vídeos com a tag: {tag}")
-            count_tag = 0
+        if not self.downloading:
+            await client.disconnect()
+            return
 
-            # resolve entity with FloodWait handling
-            entity = None
-            while self.downloading and entity is None:
-                try:
-                    entity = await client.get_input_entity(target)
-                except FloodWaitError as e:
-                    self._log(f"Flood wait ao resolver target ({e.seconds}s)")
-                    if e.seconds > max_flood_wait:
-                        self._log(f"Flood wait muito longo ({e.seconds}s). Abortando.")
-                        await client.disconnect()
-                        return
-                    self._log(f"Aguardando {e.seconds}s...")
+        if mode == "videos":
+            # --- MODO VIDEOS: enumera todos os vídeos do canal (bypass de proteção) ---
+            self._log("\nModo Vídeos: listando todos os vídeos do canal...")
+            video_items = []  # (Message, título)
+            seen_msg_ids = set()
+
+            try:
+                async for msg in client.iter_messages(
+                    entity, limit=limit or None, filter=InputMessagesFilterVideo
+                ):
+                    if not self.downloading:
+                        break
+
+                    if msg.id in seen_msg_ids:
+                        continue
+                    seen_msg_ids.add(msg.id)
+
+                    if not getattr(msg, "media", None):
+                        continue
+
+                    # extract video title from caption (same rule as downloads)
+                    lines = [
+                        l.strip()
+                        for l in (msg.message or "").split("\n")
+                        if l.strip()
+                    ]
+                    if not lines:
+                        title = f"msg{msg.id}"
+                    else:
+                        if name_line_choice == "primeira":
+                            title = lines[0]
+                        elif name_line_choice == "segunda":
+                            title = lines[1] if len(lines) > 1 else lines[0]
+                        elif name_line_choice == "terceira":
+                            title = lines[2] if len(lines) > 2 else lines[-1]
+                        else:
+                            title = lines[-1]
+                    while title.startswith("="):
+                        title = title[1:].strip()
+
+                    video_items.append((msg, title))
+
+            except FloodWaitError as e:
+                self._log(f"Flood wait durante iteração ({e.seconds}s)")
+                if e.seconds > max_flood_wait:
+                    self._log(f"Flood wait muito longo ({e.seconds}s). Abortando.")
+                else:
                     await asyncio.sleep(e.seconds + 1)
-                except Exception as e:
-                    self._log(f"Erro ao resolver entidade: {e}")
-                    self._show_notification(
-                        "Erro de Target",
-                        f"Não foi possível encontrar o canal/grupo:\n{target}\n\nErro: {e}",
-                        "error",
-                    )
+            except Exception as e:
+                self._log(f"Erro ao processar mensagens: {e}")
+
+            if not self.downloading:
+                await client.disconnect()
+                return
+
+            total_encontrados += len(video_items)
+
+            if not video_items:
+                self._log("Nenhum vídeo encontrado no canal.")
+            else:
+                self._log(f"{len(video_items)} vídeos encontrados. Aguardando seleção...")
+                selected_ids = await self._ask_video_selection_async(
+                    [(m.id, t) for m, t in video_items]
+                )
+                if selected_ids is None:
+                    self._log("Seleção cancelada pelo usuário.")
                     await client.disconnect()
                     return
 
-            if not self.downloading:
-                break
-
-            seen_msg_ids = set()
-            while self.downloading:
-                try:
-                    async for msg in client.iter_messages(entity, search=tag):
+                selected_set = set(selected_ids)
+                if not selected_set:
+                    self._log("Nenhum vídeo selecionado. Nada para baixar.")
+                else:
+                    self._log(
+                        f"{len(selected_set)} vídeos selecionados. Baixando..."
+                    )
+                    count_tag = 0
+                    for msg, title in video_items:
+                        if msg.id not in selected_set:
+                            continue
                         if not self.downloading:
                             break
 
-                        if msg.id in seen_msg_ids:
-                            continue
-                        seen_msg_ids.add(msg.id)
-                        total_encontrados += 1
-
-                        if not msg.message or tag not in msg.message:
-                            continue
-                        if not getattr(msg, "media", None):
-                            continue
-
-                        is_video = getattr(msg, "video", None) is not None
-                        mime = getattr(msg.media, "mime_type", "") if msg.media else ""
-                        if not is_video and not mime.startswith("video"):
-                            # document heuristic
-                            try:
-                                d = getattr(msg.media, "document", None)
-                                if d is None:
-                                    continue
-                                attrs = getattr(d, "attributes", [])
-                                if not any("video" in str(a).lower() for a in attrs):
-                                    continue
-                            except Exception:
-                                continue
-
-                        # extract video name
-                        lines = [
-                            l.strip()
-                            for l in (msg.message or "").split("\n")
-                            if l.strip()
-                        ]
-                        if not lines:
-                            video_name = f"msg{msg.id}"
-                        else:
-                            if name_line_choice == "primeira":
-                                video_name = lines[0]
-                            elif name_line_choice == "segunda":
-                                video_name = lines[1] if len(lines) > 1 else lines[0]
-                            elif name_line_choice == "terceira":
-                                video_name = lines[2] if len(lines) > 2 else lines[-1]
-                            else:
-                                video_name = lines[-1]
-                        while video_name.startswith("="):
-                            video_name = video_name[1:].strip()
-
-                        filename = safe_filename(video_name) + ".mp4"
+                        filename = safe_filename(title) + ".mp4"
                         file_path = os.path.join(out_path, filename)
 
                         if os.path.exists(file_path):
@@ -1017,11 +1185,9 @@ class TelegramDownloaderGUI(ttk.Window):
                         try:
                             self._log(f"Baixando: {filename}")
 
-                            # reset progress counters
                             self.last_progress_time = time.time()
                             self.last_progress_bytes = 0
 
-                            # update UI filename
                             self.after(
                                 0,
                                 lambda f=file_path: self.current_file_label.configure(
@@ -1033,7 +1199,9 @@ class TelegramDownloaderGUI(ttk.Window):
                                 try:
                                     if current is None or total is None:
                                         return
-                                    self._progress_callback(current, total, file_path)
+                                    self._progress_callback(
+                                        current, total, file_path
+                                    )
                                 except Exception:
                                     pass
 
@@ -1046,7 +1214,7 @@ class TelegramDownloaderGUI(ttk.Window):
                             count_tag += 1
                             registros.append(
                                 {
-                                    "tag": tag,
+                                    "tag": "video",
                                     "msg_id": msg.id,
                                     "data": msg.date.strftime("%Y-%m-%d %H:%M:%S")
                                     if msg.date
@@ -1077,21 +1245,153 @@ class TelegramDownloaderGUI(ttk.Window):
                         if limit and count_tag >= limit:
                             break
 
-                    break  # finished iter_messages
-                except FloodWaitError as e:
-                    self._log(f"Flood wait durante iteração ({e.seconds}s)")
-                    if e.seconds > max_flood_wait:
-                        self._log(f"Flood wait muito longo ({e.seconds}s). Abortando.")
-                        await client.disconnect()
-                        return
-                    self._log(f"Aguardando {e.seconds}s e reiniciando...")
-                    await asyncio.sleep(e.seconds + 1)
-                except Exception as e:
-                    self._log(f"Erro ao processar mensagens: {e}")
+                    if self.downloading:
+                        self._log(f"Vídeos: {count_tag} baixados.")
+
+        else:
+            # --- MODO TAGS: busca por texto nas mensagens (fluxo original) ---
+            for tag in tags:
+                if not self.downloading:
+                    self._log("Download cancelado pelo usuário.")
                     break
 
-            if self.downloading:
-                self._log(f"Tag {tag}: {count_tag} vídeos baixados.")
+                self._log(f"\nProcurando vídeos com a tag: {tag}")
+                count_tag = 0
+                seen_msg_ids = set()
+
+                while self.downloading:
+                    try:
+                        async for msg in client.iter_messages(
+                            entity, search=tag, limit=limit or None
+                        ):
+                            if not self.downloading:
+                                break
+
+                            if msg.id in seen_msg_ids:
+                                continue
+                            seen_msg_ids.add(msg.id)
+                            total_encontrados += 1
+
+                            if not msg.message or tag not in msg.message:
+                                continue
+                            if not getattr(msg, "media", None):
+                                continue
+
+                            is_video = getattr(msg, "video", None) is not None
+                            mime = getattr(msg.media, "mime_type", "") if msg.media else ""
+                            if not is_video and not mime.startswith("video"):
+                                try:
+                                    d = getattr(msg.media, "document", None)
+                                    if d is None:
+                                        continue
+                                    attrs = getattr(d, "attributes", [])
+                                    if not any("video" in str(a).lower() for a in attrs):
+                                        continue
+                                except Exception:
+                                    continue
+
+                            lines = [
+                                l.strip()
+                                for l in (msg.message or "").split("\n")
+                                if l.strip()
+                            ]
+                            if not lines:
+                                video_name = f"msg{msg.id}"
+                            else:
+                                if name_line_choice == "primeira":
+                                    video_name = lines[0]
+                                elif name_line_choice == "segunda":
+                                    video_name = lines[1] if len(lines) > 1 else lines[0]
+                                elif name_line_choice == "terceira":
+                                    video_name = lines[2] if len(lines) > 2 else lines[-1]
+                                else:
+                                    video_name = lines[-1]
+                            while video_name.startswith("="):
+                                video_name = video_name[1:].strip()
+
+                            filename = safe_filename(video_name) + ".mp4"
+                            file_path = os.path.join(out_path, filename)
+
+                            if os.path.exists(file_path):
+                                self._log(f"Já existe: {filename}")
+                                continue
+
+                            try:
+                                self._log(f"Baixando: {filename}")
+
+                                self.last_progress_time = time.time()
+                                self.last_progress_bytes = 0
+
+                                self.after(
+                                    0,
+                                    lambda f=file_path: self.current_file_label.configure(
+                                        text=f"Arquivo: {os.path.basename(f)}"
+                                    ),
+                                )
+
+                                def progress_wrapper(current, total):
+                                    try:
+                                        if current is None or total is None:
+                                            return
+                                        self._progress_callback(current, total, file_path)
+                                    except Exception:
+                                        pass
+
+                                await client.download_media(
+                                    msg, file=file_path, progress_callback=progress_wrapper
+                                )
+
+                                self._log(f"Concluído: {filename}")
+                                total_baixados += 1
+                                count_tag += 1
+                                registros.append(
+                                    {
+                                        "tag": tag,
+                                        "msg_id": msg.id,
+                                        "data": msg.date.strftime("%Y-%m-%d %H:%M:%S")
+                                        if msg.date
+                                        else "",
+                                        "arquivo": filename,
+                                        "legenda": msg.message or "",
+                                    }
+                                )
+
+                            except FloodWaitError as e:
+                                self._log(f"Flood wait ({e.seconds}s) → aguardando...")
+                                if e.seconds <= max_flood_wait:
+                                    await asyncio.sleep(e.seconds + 1)
+                                    continue
+                                else:
+                                    self._log("Flood wait muito longo, pulando arquivo.")
+                                    continue
+                            except Exception as e:
+                                self._log(f"Erro ao baixar msg {msg.id}: {e}")
+                                total_erros += 1
+                                try:
+                                    if os.path.exists(file_path):
+                                        os.remove(file_path)
+                                except Exception:
+                                    pass
+                                continue
+
+                            if limit and count_tag >= limit:
+                                break
+
+                        break  # finished iter_messages
+                    except FloodWaitError as e:
+                        self._log(f"Flood wait durante iteração ({e.seconds}s)")
+                        if e.seconds > max_flood_wait:
+                            self._log(f"Flood wait muito longo ({e.seconds}s). Abortando.")
+                            await client.disconnect()
+                            return
+                        self._log(f"Aguardando {e.seconds}s e reiniciando...")
+                        await asyncio.sleep(e.seconds + 1)
+                    except Exception as e:
+                        self._log(f"Erro ao processar mensagens: {e}")
+                        break
+
+                if self.downloading:
+                    self._log(f"Tag {tag}: {count_tag} vídeos baixados.")
 
         # disconnect
         try:
