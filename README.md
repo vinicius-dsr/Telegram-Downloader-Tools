@@ -1,15 +1,15 @@
 # 📥 Telegram Downloader Tools
 
-Este projeto permite baixar vídeos do Telegram utilizando múltiplas hashtags. É uma ferramenta útil para coletar conteúdo de canais ou grupos específicos.
+Ferramenta para baixar vídeos do Telegram por **hashtags** ou **todos os vídeos de um canal/grupo**. Útil para coletar conteúdo de canais específicos, inclusive aqueles com proteção contra cópia/forward (download direto via API).
 
-**Disponível em três versões:**
-- 🖥️ **CLI (Linha de Comando)** - Para uso em scripts e automação
-- 🎨 **GUI (CustomTkinter)** - Interface gráfica tradicional
-- ✨ **Flet UI** - Interface web moderna e responsiva - **EM DESENVOLVIMENTO**
+**Versões disponíveis:**
+- 🎨 **GUI (ttkbootstrap)** - Interface gráfica estilo console, tema escuro `darkly`
+
+> A antiga interface CLI/argparse e a versão CustomTkinter foram removidas. A aplicação mantida é `src/download_telegram_video_tags_gui.py`.
 
 ## 📋 Pré-requisitos
 
-- Python 3.7 ou superior
+- Python 3.9 ou superior
 - Conta no Telegram
 - API ID e API Hash (veja seção abaixo)
 
@@ -22,29 +22,27 @@ Este projeto permite baixar vídeos do Telegram utilizando múltiplas hashtags. 
 
 ## 🔐 Fluxo de Autenticação
 
-Agora o aplicativo possui um fluxo de autenticação simplificado e seguro:
+O aplicativo faz login pela interface, sem prompts no terminal:
 
 ### Primeiro Acesso
-1. Ao iniciar o aplicativo pela primeira vez, você verá a tela de login
-2. Preencha os seguintes campos:
+1. Ao iniciar, você verá a tela de login
+2. Preencha:
    - **API ID**: Seu ID da API do Telegram
    - **API Hash**: Seu hash da API do Telegram
-   - **Telefone**: Número de telefone com código do país (ex: +5511987654321)
-
+   - **Telefone**: Número com código do país (ex: +5511987654321)
 3. Clique em "Conectar e enviar código"
-4. Um código de verificação será enviado para sua conta do Telegram
-5. Insira o código recebido na janela de confirmação
-6. Se sua conta tiver autenticação de dois fatores (2FA), você será solicitado a inserir a senha
+4. O código de verificação é pedido em uma **janela modal**
+5. Se sua conta tiver 2FA, a senha também é pedida em janela modal
 
 ### Próximos Acessos
-- Suas credenciais são salvas de forma segura no seu computador
-- O aplicativo tentará reconectar automaticamente usando a sessão anterior
-- Se precisar fazer login novamente, você pode apagar o arquivo de configuração e a sessão através do menu de configurações
+- Se houver uma **sessão válida** salva, o app conecta automaticamente (nada é perguntado)
+- Se a sessão expirou/estiver inválida, o app reabre o fluxo de login por modais (telefone → código → 2FA) diretamente no fluxo de download
+- **Sem prompt interativo no terminal** em nenhuma hipótese
 
 ### Dicas de Segurança
 - Mantenha suas credenciais da API em segredo
 - Nunca compartilhe códigos de verificação ou senhas
-- Se estiver usando um computador compartilhado, certifique-se de fazer logout adequadamente
+- As credenciais ficam em `src/config.json` (ignorado pelo git) e a sessão em `src/*.session`
 
 ## 🚀 Instalação
 
@@ -63,154 +61,68 @@ Se estiver usando Arch Linux instale o Tkinter:
 sudo pacman -S tk
 ```
 
----
+## 🎨 Como Usar
 
-## 🎨 Versões GUI (Interface Gráfica)
-
-### Versão CustomTkinter
-
-- 🖥️ Interface gráfica tradicional para desktop
-- 🎨 Tema escuro por padrão
-- 📊 Barra de progresso em tempo real
-- 📝 Área de log expansível
-- ⚡ Download assíncrono
-- 🛑 Controle de downloads em andamento
-- 💾 Gerenciamento de configurações
-
-### Versão Flet (Web/Desktop)
-
-- 🌐 Interface web moderna e responsiva
-- 📱 Compatível com dispositivos móveis
-- 🎨 Design limpo e intuitivo
-- 📊 Feedback visual em tempo real
-- ⚡ Download assíncrono com indicadores de progresso
-- 🔄 Atualizações em tempo real
-- 📦 Fácil implantação como aplicativo web
-
-### Como Usar a GUI CustomTkinter
-
-#### Configuração de Nomes de Arquivo
-- **Linha do Nome do Vídeo**: Selecione qual linha da mensagem será usada como nome do arquivo baixado:
-  - `Primeira Linha`: Usa a primeira linha da mensagem
-  - `Segunda Linha`: Usa a segunda linha (ou a primeira se não houver segunda)
-  - `Terceira Linha`: Usa a terceira linha (ou a última disponível)
-  - `Última Linha`: Usa a última linha da mensagem (comportamento padrão)
-
-#### Dicas para Tags
-- As tags podem ser inseridas de várias formas, o sistema irá formatar automaticamente:
-  - `tag1 tag2 tag3` → `tag1, tag2, tag3`
-  - `tag1,tag2,tag3` → `tag1, tag2, tag3`
-  - `tag1, tag2, tag3` → mantém a formatação
-  - Mistura de espaços e vírgulas também é aceito
-
-1. Execute o arquivo `src/download_telegram_video_tags_gui.py`:
 ```bash
 python src/download_telegram_video_tags_gui.py
 ```
 
-2. Preencha os campos necessários:
-   - API ID e API Hash (obtidos em [my.telegram.org](https://my.telegram.org))
-   - Nome ou link do canal/grupo (ex: @nomedocanal)
-   - Hashtags para filtrar (separadas por vírgula)
-   - Pasta de saída para os downloads
-   - Limite de mensagens a serem verificadas
+### Campos da interface
 
-3. Clique em "Iniciar Download"
-   - **💾 Salvar Configuração**: Salva seus parâmetros em arquivo JSON
-   - **📂 Carregar Configuração**: Carrega configurações salvas anteriormente
+- **Canal/Grupo**: nome ou link do canal (ex: `@nomedocanal`)
+- **Tags**: hashtags separadas por vírgula (somente no **Modo Tags**)
+- **Modo**: escolha entre `Tags` e `Todos os Vídeos`
+- **Pasta de saída**: diretório para salvar os downloads
+- **Limite por tag**: no modo Tags, limite de mensagens por tag; no modo Vídeos, **limite de vídeos listados** (`0` = todos)
+- **Nome da sessão**: arquivo de sessão usado (padrão `session`)
+- **Linha do nome do vídeo**: qual linha da mensagem vira o nome do arquivo
+- **Max Flood Wait (s)**: tempo máximo de espera automática de FloodWait
 
-4. **Iniciar Download:**
-   - Clique em **"🚀 Iniciar Download"**
-   - Na primeira execução, será necessário autenticar com o Telegram
-   - Acompanhe o progresso na barra e no log
+### 📹 Modo Tags
+Busca no histórico do canal mensagens que contenham a hashtag informada e baixa os vídeos encontrados.
+
+### 📺 Modo "Todos os Vídeos"
+Enumera **todos os vídeos** do canal/grupo (sem depender de hashtags) e download direto via API — funciona em canais com proteção contra cópia/forward.
+
+1. Selecione `Todos os Vídeos` (o campo Tags é desabilitado)
+2. Defina o limite de vídeos a listar no campo **Limite por tag** (`0` = todos)
+3. Clique em **Iniciar Download**
+4. Um **pop-up de seleção** lista os vídeos com `[msg_id] título` e checkbox:
+   - **[SELECIONAR TUDO]**: marca todos
+   - **[LIMPAR]**: desmarca todos
+   - **Baixar Selecionados (N)**: baixa apenas os marcados (o contador atualiza em tempo real)
+   - **[CANCELAR]**: aborta sem baixar nada
+
+### Configuração de Nomes de Arquivo
+- **Primeira Linha**: usa a primeira linha da mensagem
+- **Segunda Linha**: usa a segunda linha (ou a primeira, se não houver segunda)
+- **Terceira Linha**: usa a terceira linha (ou a última disponível)
+- **Última Linha**: usa a última linha (padrão)
+
+### Dicas para Tags
+As tags podem ser inseridas de várias formas, o sistema formata automaticamente:
+- `tag1 tag2 tag3` → `tag1, tag2, tag3`
+- `tag1,tag2,tag3` → `tag1, tag2, tag3`
+- `tag1, tag2, tag3` → mantém a formatação
+- Mistura de espaços e vírgulas também é aceita
 
 ### Recursos da GUI
 
-- **Validação de Campos**: Verifica campos obrigatórios e formatos
-- **Progresso em Tempo Real**: Porcentagem, velocidade (MB/s) e tempo estimado (ETA)
-- **Log Detalhado**: Status de conexão, vídeos encontrados, erros e avisos
-- **Botão Parar**: Cancela o download em andamento a qualquer momento
-- **📌 Nomes de Arquivo Dinâmicos**: Escolha qual linha da mensagem será usada como nome do arquivo (primeira, segunda, terceira ou última linha)
-- **🏷️ Processamento Inteligente de Tags**: Aceita tags separadas por vírgulas, espaços ou ambos, com formatação automática
-- **💾 Configurações Salvas**: As preferências de linha para nomes de arquivo são salvas com as configurações
-
----
-
-## 🖥️ Versão CLI (Linha de Comando)
-
-### Como Usar o CLI
-
-Execute o seguinte comando:
-
-```bash
-python src/download_telegram_video_tags.py \
-  --api-id SEU_API_ID \
-  --api-hash SEU_API_HASH \
-  --target "https://t.me/nomeCanal" \
-  --tags "#tag1,#tag2" \
-  --out "./downloads"
-```
-
-### Parâmetros do CLI
-
-- `--api-id`: (obrigatório) API ID obtido em my.telegram.org
-- `--api-hash`: (obrigatório) API Hash obtido em my.telegram.org
-- `--target`: (obrigatório) Canal ou grupo (@nomeCanal ou https://t.me/nomeCanal)
-- `--tags`: (obrigatório) Lista de hashtags separadas por vírgula
-- `--out`: Pasta de saída (padrão: ./downloads)
-- `--limit`: Limite de mensagens por tag (0 = sem limite)
-- `--session`: Nome do arquivo de sessão (padrão: session)
-- `--max-flood-wait`: Tempo máximo de FloodWait automático em segundos (padrão: 300)
-
-### Exemplos de Uso CLI
-
-```bash
-# Exemplo básico
-python src/download_telegram_video_tags.py \
-  --api-id 12345678 \
-  --api-hash "a1b2c3d4e5f6g7h8i9j0" \
-  --target "@meucanal" \
-  --tags "#video,#conteudo"
-
-# Com limite e pasta personalizada
-python src/download_telegram_video_tags.py \
-  --api-id 12345678 \
-  --api-hash "a1b2c3d4e5f6g7h8i9j0" \
-  --target "https://t.me/meucanal" \
-  --tags "#tag1,#tag2,#tag3" \
-  --out "C:/Downloads/Videos" \
-  --limit 50
-
-# Não aceitar FloodWaits automáticos
-python src/download_telegram_video_tags.py \
-  --api-id 12345678 \
-  --api-hash "a1b2c3d4e5f6g7h8i9j0" \
-  --target "@canal" \
-  --tags "#tag" \
-  --max-flood-wait 0
-
-# Aceitar FloodWaits de até 60 segundos
-python src/download_telegram_video_tags.py \
-  --api-id 12345678 \
-  --api-hash "a1b2c3d4e5f6g7h8i9j0" \
-  --target "@canal" \
-  --tags "#tag" \
-  --max-flood-wait 60
-```
-
----
+- **Validação de Campos**: verifica campos obrigatórios e formatos
+- **Progresso em Tempo Real**: porcentagem, velocidade (MB/s) e tempo estimado (ETA)
+- **Log Detalhado**: status de conexão, vídeos encontrados, erros e avisos
+- **Botão Parar**: cancela o download em andamento a qualquer momento
+- **Nomes de Arquivo Dinâmicos**: primeira, segunda, terceira ou última linha da mensagem
+- **Processamento Inteligente de Tags**: separação automática por vírgulas/espaços
+- **Configurações Salvas**: preferências salvas em `config.json` (salvar/carregar)
 
 ## ⚠️ FloodWait (Limitação de Requisições)
 
-Ao usar a API do Telegram, é possível receber `FloodWaitError` quando a conta faz muitas requisições em pouco tempo. O Telegram exige que você aguarde um certo número de segundos antes de tentar novamente.
-
-### Tratamento de FloodWait
-
-Ambas as versões (CLI e GUI) tratam FloodWait automaticamente:
+Ao usar a API do Telegram é possível receber `FloodWaitError` quando a conta faz muitas requisições em pouco tempo. O app trata automaticamente:
 
 - **Retry controlado** ao resolver a entidade do target
 - **Retry automático** durante a iteração de mensagens
-- **Controle via `--max-flood-wait`** (CLI) ou campo na GUI
+- **Controle via campo Max Flood Wait** na GUI
 
 ### Comportamento
 
@@ -219,73 +131,58 @@ Ambas as versões (CLI e GUI) tratam FloodWait automaticamente:
 
 ### Valores Recomendados
 
-- **0**: Não aceitar waits automáticos (aborta imediatamente)
-- **30-60**: Aceitar waits curtos automaticamente
-- **300** (padrão): Aceita waits de até 5 minutos
+- **0**: não aceitar waits automáticos (aborta imediatamente)
+- **30-60**: aceitar waits curtos automaticamente
+- **300** (padrão): aceita waits de até 5 minutos
 
 ### Boas Práticas
 
-- Reduza o número de requisições por execução (use `--limit` menor)
+- Reduza o número de requisições por execução (use um limite menor)
 - Espalhe as execuções no tempo (batches com intervalo)
 - Use sessões diferentes se necessário
 - Aguarde manualmente em caso de FloodWaits longos
-
----
 
 ## 📁 Arquivos Gerados
 
 Após o download, você encontrará:
 
-1. **Vídeos**: Salvos na pasta especificada com nomes seguros
+1. **Vídeos**: salvos na pasta especificada com nomes seguros
 2. **CSV**: `videos_baixados.csv` com informações detalhadas:
-   - Tag usada
+   - **Tag usada**: a hashtag procurada, ou `video` no modo "Todos os Vídeos"
    - ID da mensagem
    - Data e hora
    - Nome do arquivo
    - Legenda completa
 
----
+   > Há também um backup do CSV em `src/videos_baixados_*.csv` a cada execução.
 
 ## 🎨 Personalização da GUI
 
-A interface usa **customtkinter** com tema escuro por padrão. Para mudar:
+A interface usa **ttkbootstrap** com o tema escuro `darkly`. Para mudar o tema, altere em `src/download_telegram_video_tags_gui.py`:
 
-No arquivo `src/download_telegram_video_tags_gui.py`, linhas 15-16:
 ```python
-ctk.set_appearance_mode("dark")  # Altere para "light" ou "system"
-ctk.set_default_color_theme("blue")  # Altere para "green" ou "dark-blue"
+super().__init__(themename="darkly")  # ex: "darkly", "litera", "flatly", "cosmo"
 ```
-
----
 
 ## 🐛 Solução de Problemas
-
-### Erro ao importar customtkinter
-```bash
-pip install customtkinter --upgrade
-```
 
 ### Erro de conexão do Telegram
 - Verifique suas credenciais API ID e API Hash
 - Certifique-se de estar conectado à internet
+- Se a sessão estiver inválida, o app reabrirá o login por modais automaticamente
 
 ### Flood Wait muito longo
 - Aumente o valor de "Max Flood Wait"
 - Ou aguarde manualmente e tente novamente mais tarde
 
 ### Erro "Can't find a usable init.tcl"
-Este erro ocorre quando o Python não consegue encontrar as bibliotecas Tcl/Tk do sistema.
-O projeto inclui um script de correção automática que tenta localizar essas bibliotecas.
-
-Ele é executado automaticamente ao iniciar a GUI, mas se você precisar depurar ou verificar se as bibliotecas são encontradas:
+Este erro ocorre quando o Python não encontra as bibliotecas Tcl/Tk do sistema. O projeto inclui um script de correção automática (`src/tcl_fix.py`) que tenta localizar essas bibliotecas. Ele roda automaticamente ao iniciar a GUI, mas você pode executá-lo manualmente:
 
 ```bash
 python src/tcl_fix.py
 ```
 
-Se o script não encontrar as bibliotecas, você precisará instalá-las no seu sistema (ex: `sudo apt install python3-tk tk-dev` no Linux).
-
----
+Se o script não encontrar as bibliotecas, instale-as no sistema (ex: `sudo apt install python3-tk tk-dev` no Linux).
 
 ## 📺 Canais do Telegram
 
