@@ -191,12 +191,6 @@ Se o script não encontrar as bibliotecas, instale-as no sistema (ex: `sudo apt 
 
 ---
 
-## ☕ Apoie o Projeto
-
-Se você gostou do projeto e gostaria de apoiar o desenvolvimento, considere me pagar um café! Isso ajuda a manter o projeto ativo e com melhorias constantes.
-
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://viniciusreis.site/coffee)
-
 ## 🤝 Contribuição
 
 Sinta-se à vontade para contribuir com melhorias ou correções. Faça um fork do repositório e envie um pull request.
@@ -208,3 +202,13 @@ Este projeto está disponível sob os termos da licença do repositório.
 ---
 
 **Desenvolvido com ❤️ para a comunidade**
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=vinicius-dsr%2Ftelegram-downloader-tools&type=date&legend=top-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=vinicius-dsr/telegram-downloader-tools&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=vinicius-dsr/telegram-downloader-tools&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=vinicius-dsr/telegram-downloader-tools&type=date&legend=top-left" />
+ </picture>
+</a>
